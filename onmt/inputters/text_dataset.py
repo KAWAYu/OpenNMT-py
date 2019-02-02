@@ -28,8 +28,7 @@ class TextDataset(DatasetBase):
         return len(ex.src)
 
     @staticmethod
-    def collapse_copy_scores(scores, batch, tgt_vocab, src_vocabs,
-                             batch_dim=1, batch_offset=None):
+    def collapse_copy_scores(scores, batch, tgt_vocab, src_vocabs, batch_dim=1, batch_offset=None):
         """
         Given scores from an expanded dictionary
         corresponeding to a batch, sums together copies,

@@ -33,7 +33,7 @@ def build_embeddings(opt, word_field, feat_fields, for_encoder=True):
         feature_dicts([Vocab], optional): a list of feature dictionary.
         for_encoder(bool): build Embeddings for encoder or decoder?
     """
-    emb_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
+    emb_dim = opt.src_word_vec_size if for_encoder else opt.tgt1_word_vec_size
 
     word_padding_idx = word_field.vocab.stoi[word_field.pad_token]
     num_word_embeddings = len(word_field.vocab)
@@ -95,7 +95,7 @@ def build_encoder(opt, embeddings):
     return encoder
 
 
-def build_decoder(opt, embeddings):
+def build_decoder(opt, embeddings, dec_num):
     """
     Various decoder dispatcher function.
     Args:
@@ -126,20 +126,36 @@ def build_decoder(opt, embeddings):
         )
     else:
         dec_class = InputFeedRNNDecoder if opt.input_feed else StdRNNDecoder
-        decoder = dec_class(
-            opt.rnn_type,
-            opt.brnn,
-            opt.dec_layers,
-            opt.dec_rnn_size,
-            opt.global_attention,
-            opt.global_attention_function,
-            opt.coverage_attn,
-            opt.context_gate,
-            opt.copy_attn,
-            opt.dropout,
-            embeddings,
-            opt.reuse_copy_attn
-        )
+        if dec_num == 1:
+            decoder = dec_class(
+                opt.rnn_type,
+                opt.brnn,
+                opt.dec1_layers,
+                opt.dec1_rnn_size,
+                opt.global_attention,
+                opt.global_attention_function,
+                opt.coverage_attn,
+                opt.context_gate,
+                opt.copy_attn,
+                opt.dropout,
+                embeddings,
+                opt.reuse_copy_attn
+            )
+        elif dec_num == 2:
+            decoder = dec_class(
+                opt.rnn_type,
+                opt.brnn,
+                opt.dec2_layers,
+                opt.dec2_rnn_size,
+                opt.global_attention,
+                opt.global_attention_function,
+                opt.coverage_attn,
+                opt.context_gate,
+                opt.copy_attn,
+                opt.dropout,
+                embeddings,
+                opt.reuse_copy_attn
+            )
     return decoder
 
 
@@ -162,7 +178,7 @@ def load_test_model(opt, dummy_opt, model_path=None):
             model_opt.__dict__[arg] = dummy_opt[arg]
     model = build_base_model(model_opt, fields, use_gpu(opt), checkpoint)
     model.eval()
-    model.generator.eval()
+    model.generator2.eval()
     return fields, model, model_opt
 
 
@@ -220,79 +236,98 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
         )
 
     # Build decoder.
-    tgt_fields = [f for n, f in fields['tgt']]
-    tgt_emb = build_embeddings(
-        model_opt, tgt_fields[0], tgt_fields[1:], for_encoder=False)
+    tgt1_fields = [f for n, f in fields['tgt1']]
+    tgt1_emb = build_embeddings(
+        model_opt, tgt1_fields[0], tgt1_fields[1:], for_encoder=False)
+    tgt2_fields = [f for n, f in fields['tgt2']]
+    tgt2_emb = build_embeddings(
+        model_opt, tgt2_fields[0], tgt2_fields[1:], for_encoder=False)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
         # src/tgt vocab should be the same if `-share_vocab` is specified.
-        assert src_fields[0].vocab == tgt_fields[0].vocab, \
+        assert src_fields[0].vocab == tgt1_fields[0].vocab, \
             "preprocess with -share_vocab if you use share_embeddings"
 
-        tgt_emb.word_lut.weight = src_emb.word_lut.weight
+        tgt1_emb.word_lut.weight = src_emb.word_lut.weight
 
-    decoder = build_decoder(model_opt, tgt_emb)
+    decoder1 = build_decoder(model_opt, tgt1_emb, dec_num=1)
+    decoder2 = build_decoder(model_opt, tgt2_emb, dec_num=2)
 
     # Build NMTModel(= encoder + decoder).
     device = torch.device("cuda" if gpu else "cpu")
-    model = onmt.models.NMTModel(encoder, decoder)
+    model = onmt.models.NMTModel(encoder, decoder1, decoder2)
 
     # Build Generator.
     if not model_opt.copy_attn:
         if model_opt.generator_function == "sparsemax":
-            gen_func = onmt.modules.sparse_activations.LogSparsemax(dim=-1)
+            gen1_func = onmt.modules.sparse_activations.LogSparsemax(dim=-1)
+            gen2_func = onmt.modules.sparse_activations.LogSparsemax(dim=-1)
         else:
-            gen_func = nn.LogSoftmax(dim=-1)
-        generator = nn.Sequential(
-            nn.Linear(model_opt.dec_rnn_size, len(fields["tgt"][0][1].vocab)),
-            gen_func
+            gen1_func = nn.LogSoftmax(dim=-1)
+            gen2_func = nn.LogSoftmax(dim=-1)
+        generator1 = nn.Sequential(
+            nn.Linear(model_opt.dec1_rnn_size, len(fields["tgt1"][0][1].vocab)),
+            gen1_func
         )
         if model_opt.share_decoder_embeddings:
-            generator[0].weight = decoder.embeddings.word_lut.weight
+            generator1[0].weight = decoder1.embeddings.word_lut.weight
+        generator2 = nn.Sequential(
+            nn.Linear(model_opt.dec2_rnn_size, len(fields["tgt2"][0][1].vocab)),
+            gen2_func
+        )
+        if model_opt.share_decoder_embeddings:
+            generator2[0].weight = decoder2.embeddings.word_lut.weight
     else:
-        vocab_size = len(fields["tgt"][0][1].vocab)
-        pad_idx = fields["tgt"][0][1].vocab.stoi[fields["tgt"][0][1].pad_token]
-        generator = CopyGenerator(model_opt.dec_rnn_size, vocab_size, pad_idx)
+        vocab_size = len(fields["tgt1"][0][1].vocab)
+        pad_idx = fields["tgt1"][0][1].vocab.stoi[fields["tgt1"][0][1].pad_token]
+        generator1 = CopyGenerator(model_opt.dec1_rnn_size, vocab_size, pad_idx)
+        vocab_size = len(fields["tgt2"][0][1].vocab)
+        pad_idx = fields["tgt2"][0][1].vocab.stoi[fields["tgt2"][0][1].pad_token]
+        generator2 = CopyGenerator(model_opt.dec2_rnn_size, vocab_size, pad_idx)
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:
         # This preserves backward-compat for models using customed layernorm
         def fix_key(s):
-            s = re.sub(r'(.*)\.layer_norm((_\d+)?)\.b_2',
-                       r'\1.layer_norm\2.bias', s)
-            s = re.sub(r'(.*)\.layer_norm((_\d+)?)\.a_2',
-                       r'\1.layer_norm\2.weight', s)
+            s = re.sub(r'(.*)\.layer_norm((_\d+)?)\.b_2', r'\1.layer_norm\2.bias', s)
+            s = re.sub(r'(.*)\.layer_norm((_\d+)?)\.a_2', r'\1.layer_norm\2.weight', s)
             return s
 
-        checkpoint['model'] = {fix_key(k): v
-                               for k, v in checkpoint['model'].items()}
+        checkpoint['model'] = {fix_key(k): v for k, v in checkpoint['model'].items()}
         # end of patch for backward compatibility
 
         model.load_state_dict(checkpoint['model'], strict=False)
-        generator.load_state_dict(checkpoint['generator'], strict=False)
+        generator1.load_state_dict(checkpoint['generator1'], strict=False)
+        generator2.load_state_dict(checkpoint['generator2'], strict=False)
     else:
         if model_opt.param_init != 0.0:
             for p in model.parameters():
                 p.data.uniform_(-model_opt.param_init, model_opt.param_init)
-            for p in generator.parameters():
+            for p in generator1.parameters():
+                p.data.uniform_(-model_opt.param_init, model_opt.param_init)
+            for p in generator2.parameters():
                 p.data.uniform_(-model_opt.param_init, model_opt.param_init)
         if model_opt.param_init_glorot:
             for p in model.parameters():
                 if p.dim() > 1:
                     xavier_uniform_(p)
-            for p in generator.parameters():
+            for p in generator1.parameters():
+                if p.dim() > 1:
+                    xavier_uniform_(p)
+            for p in generator2.parameters():
                 if p.dim() > 1:
                     xavier_uniform_(p)
 
         if hasattr(model.encoder, 'embeddings'):
-            model.encoder.embeddings.load_pretrained_vectors(
-                model_opt.pre_word_vecs_enc, model_opt.fix_word_vecs_enc)
-        if hasattr(model.decoder, 'embeddings'):
-            model.decoder.embeddings.load_pretrained_vectors(
-                model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
+            model.encoder.embeddings.load_pretrained_vectors(model_opt.pre_word_vecs_enc, model_opt.fix_word_vecs_enc)
+        if hasattr(model.decoder1, 'embeddings'):
+            model.decoder1.embeddings.load_pretrained_vectors(model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
+        if hasattr(model.decoder2, 'embeddings'):
+            model.decoder2.embeddings.load_pretrained_vectors(model_opt.pre_word_vecs_dec, model_opt.fix_word_vecs_dec)
 
-    model.generator = generator
+    model.generator1 = generator1
+    model.generator2 = generator2
     model.to(device)
 
     return model

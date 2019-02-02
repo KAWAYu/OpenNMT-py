@@ -32,43 +32,44 @@ def _check_save_model_path(opt):
 
 def _tally_parameters(model):
     n_params = sum([p.nelement() for p in model.parameters()])
-    enc = 0
-    dec = 0
+    enc, dec1, dec2 = 0, 0, 0
     for name, param in model.named_parameters():
         if 'encoder' in name:
             enc += param.nelement()
-        else:
-            dec += param.nelement()
-    return n_params, enc, dec
+        elif 'decoder1' in name or 'generator1' in name:
+            dec1 += param.nelement()
+        elif 'decoder2' in name or 'generator2' in name:
+            dec2 += param.nelement()
+    return n_params, enc, dec1, dec2
 
 
 def training_opt_postprocessing(opt, device_id):
     if opt.word_vec_size != -1:
         opt.src_word_vec_size = opt.word_vec_size
-        opt.tgt_word_vec_size = opt.word_vec_size
+        opt.tgt1_word_vec_size = opt.word_vec_size
+        opt.tgt2_word_vec_size = opt.word_vec_size
 
     if opt.layers != -1:
         opt.enc_layers = opt.layers
-        opt.dec_layers = opt.layers
+        opt.dec1_layers = opt.layers
+        opt.dec2_layers = opt.layers
 
     if opt.rnn_size != -1:
         opt.enc_rnn_size = opt.rnn_size
-        opt.dec_rnn_size = opt.rnn_size
+        opt.dec1_rnn_size = opt.rnn_size
+        opt.dec2_rnn_size = opt.rnn_size
 
         # this check is here because audio allows the encoder and decoder to
         # be different sizes, but other model types do not yet
-        same_size = opt.enc_rnn_size == opt.dec_rnn_size
-        assert opt.model_type == 'audio' or same_size, \
-            "The encoder and decoder rnns must be the same size for now"
+        same_size = opt.enc_rnn_size == opt.dec1_rnn_size == opt.dec2_rnn_size
+        assert opt.model_type == 'audio' or same_size, "The encoder and decoder rnns must be the same size for now"
 
     opt.brnn = opt.encoder_type == "brnn"
 
-    assert opt.rnn_type != "SRU" or opt.gpu_ranks, \
-        "Using SRU requires -gpu_ranks set."
+    assert opt.rnn_type != "SRU" or opt.gpu_ranks, "Using SRU requires -gpu_ranks set."
 
     if torch.cuda.is_available() and not opt.gpu_ranks:
-        logger.info("WARNING: You have a CUDA device, \
-                    should run with -gpu_ranks")
+        logger.info("WARNING: You have a CUDA device, should run with -gpu_ranks")
 
     if opt.seed > 0:
         torch.manual_seed(opt.seed)
@@ -94,8 +95,7 @@ def main(opt, device_id):
     # Load checkpoint if we resume from a previous training.
     if opt.train_from:
         logger.info('Loading checkpoint from %s' % opt.train_from)
-        checkpoint = torch.load(opt.train_from,
-                                map_location=lambda storage, loc: storage)
+        checkpoint = torch.load(opt.train_from, map_location=lambda storage, loc: storage)
 
         # Load default opts values then overwrite it with opts from
         # the checkpoint. It's usefull in order to re-train a model
@@ -127,16 +127,17 @@ def main(opt, device_id):
         fields = vocab
 
     # Report src and tgt vocab sizes, including for features
-    for side in ['src', 'tgt']:
+    for side in ['src', 'tgt1', 'tgt2']:
         for name, f in fields[side]:
             if f.use_vocab:
                 logger.info(' * %s vocab size = %d' % (name, len(f.vocab)))
 
     # Build model.
     model = build_model(model_opt, opt, fields, checkpoint)
-    n_params, enc, dec = _tally_parameters(model)
+    n_params, enc, dec1, dec2 = _tally_parameters(model)
     logger.info('encoder: %d' % enc)
-    logger.info('decoder: %d' % dec)
+    logger.info('decoder1: %d' % dec1)
+    logger.info('decoder2: %d' % dec2)
     logger.info('* number of parameters: %d' % n_params)
     _check_save_model_path(opt)
 
@@ -146,16 +147,14 @@ def main(opt, device_id):
     # Build model saver
     model_saver = build_model_saver(model_opt, opt, model, fields, optim)
 
-    trainer = build_trainer(opt, device_id, model, fields,
-                            optim, data_type, model_saver=model_saver)
+    trainer = build_trainer(opt, device_id, model, fields, optim, data_type, model_saver=model_saver)
 
     # this line is kind of a temporary kludge because different objects expect
     # fields to have a different structure
     dataset_fields = dict(chain.from_iterable(fields.values()))
 
     train_iter = build_dataset_iter("train", dataset_fields, opt)
-    valid_iter = build_dataset_iter(
-        "valid", dataset_fields, opt, is_train=False)
+    valid_iter = build_dataset_iter("valid", dataset_fields, opt, is_train=False)
 
     if len(opt.gpu_ranks):
         logger.info('Starting training on GPU: %s' % opt.gpu_ranks)

@@ -12,7 +12,7 @@ from onmt.modules.sparse_losses import SparsemaxLoss
 from onmt.modules.sparse_activations import LogSparsemax
 
 
-def build_loss_compute(model, tgt_field, opt, train=True):
+def build_loss_compute(model, tgt1_field, tgt2_field, opt, train=True):
     """
     Returns a LossCompute subclass which wraps around an nn.Module subclass
     (such as nn.NLLLoss) which defines the loss criterion. The LossCompute
@@ -25,37 +25,57 @@ def build_loss_compute(model, tgt_field, opt, train=True):
     """
     device = torch.device("cuda" if onmt.utils.misc.use_gpu(opt) else "cpu")
 
-    padding_idx = tgt_field.vocab.stoi[tgt_field.pad_token]
-    unk_idx = tgt_field.vocab.stoi[tgt_field.unk_token]
+    padding_idx1 = tgt1_field.vocab.stoi[tgt1_field.pad_token]
+    unk_idx1 = tgt1_field.vocab.stoi[tgt1_field.unk_token]
     if opt.copy_attn:
-        criterion = onmt.modules.CopyGeneratorLoss(
-            len(tgt_field.vocab), opt.copy_attn_force,
-            unk_index=unk_idx, ignore_index=padding_idx
-        )
+        criterion1 = onmt.modules.CopyGeneratorLoss(
+            len(tgt1_field.vocab), opt.copy_attn_force, unk_index=unk_idx1, ignore_index=padding_idx1)
     elif opt.label_smoothing > 0 and train:
-        criterion = LabelSmoothingLoss(
-            opt.label_smoothing, len(tgt_field.vocab), ignore_index=padding_idx
-        )
-    elif isinstance(model.generator[1], LogSparsemax):
-        criterion = SparsemaxLoss(ignore_index=padding_idx, reduction='sum')
+        criterion1 = LabelSmoothingLoss(opt.label_smoothing, len(tgt1_field.vocab), ignore_index=padding_idx1)
+    elif isinstance(model.generator1[1], LogSparsemax):
+        criterion1 = SparsemaxLoss(ignore_index=padding_idx1, reduction='sum')
     else:
-        criterion = nn.NLLLoss(ignore_index=padding_idx, reduction='sum')
+        criterion1 = nn.NLLLoss(ignore_index=padding_idx1, reduction='sum')
 
     # if the loss function operates on vectors of raw logits instead of
     # probabilities, only the first part of the generator needs to be
     # passed to the NMTLossCompute. At the moment, the only supported
     # loss function of this kind is the sparsemax loss.
-    use_raw_logits = isinstance(criterion, SparsemaxLoss)
-    loss_gen = model.generator[0] if use_raw_logits else model.generator
+    use_raw_logits = isinstance(criterion1, SparsemaxLoss)
+    loss_gen = model.generator1[0] if use_raw_logits else model.generator1
     if opt.copy_attn:
-        compute = onmt.modules.CopyGeneratorLossCompute(
-            criterion, loss_gen, tgt_field.vocab, opt.copy_loss_by_seqlength
-        )
+        compute1 = onmt.modules.CopyGeneratorLossCompute(
+            criterion1, loss_gen, tgt1_field.vocab, opt.copy_loss_by_seqlength)
     else:
-        compute = NMTLossCompute(criterion, loss_gen)
-    compute.to(device)
+        compute1 = NMTLossCompute(criterion1, loss_gen)
+    compute1.to(device)
 
-    return compute
+    padding_idx2 = tgt1_field.vocab.stoi[tgt2_field.pad_token]
+    unk_idx2 = tgt1_field.vocab.stoi[tgt2_field.unk_token]
+    if opt.copy_attn:
+        criterion2 = onmt.modules.CopyGeneratorLoss(
+            len(tgt2_field.vocab), opt.copy_attn_force, unk_index=unk_idx2, ignore_index=padding_idx2)
+    elif opt.label_smoothing > 0 and train:
+        criterion2 = LabelSmoothingLoss(opt.label_smoothing, len(tgt2_field.vocab), ignore_index=padding_idx2)
+    elif isinstance(model.generator2[1], LogSparsemax):
+        criterion2 = SparsemaxLoss(ignore_index=padding_idx2, reduction='sum')
+    else:
+        criterion2 = nn.NLLLoss(ignore_index=padding_idx2, reduction='sum')
+
+    # if the loss function operates on vectors of raw logits instead of
+    # probabilities, only the first part of the generator needs to be
+    # passed to the NMTLossCompute. At the moment, the only supported
+    # loss function of this kind is the sparsemax loss.
+    use_raw_logits = isinstance(criterion2, SparsemaxLoss)
+    loss_gen = model.generator2[0] if use_raw_logits else model.generator2
+    if opt.copy_attn:
+        compute2 = onmt.modules.CopyGeneratorLossCompute(
+            criterion2, loss_gen, tgt2_field.vocab, opt.copy_loss_by_seqlength)
+    else:
+        compute2 = NMTLossCompute(criterion2, loss_gen)
+    compute2.to(device)
+
+    return compute1, compute2
 
 
 class LossComputeBase(nn.Module):
@@ -113,7 +133,7 @@ class LossComputeBase(nn.Module):
         """
         return NotImplementedError
 
-    def monolithic_compute_loss(self, batch, output, attns):
+    def monolithic_compute_loss(self, batch, output, attns, target):
         """
         Compute the forward loss for the batch.
 
@@ -127,15 +147,13 @@ class LossComputeBase(nn.Module):
         Returns:
             :obj:`onmt.utils.Statistics`: loss statistics
         """
-        range_ = (0, batch.tgt.size(0))
-        shard_state = self._make_shard_state(batch, output, range_, attns)
+        range_ = (0, batch.tgt1.size(0) if target == 'tgt1' else batch.target2.size(0))
+        shard_state = self._make_shard_state(batch, output, range_, attns, target=target)
         _, batch_stats = self._compute_loss(batch, **shard_state)
 
         return batch_stats
 
-    def sharded_compute_loss(self, batch, output, attns,
-                             cur_trunc, trunc_size, shard_size,
-                             normalization):
+    def sharded_compute_loss(self, batch, output, attns, cur_trunc, trunc_size, shard_size, normalization, target):
         """Compute the forward loss and backpropagate.  Computation is done
         with shards and optionally truncation for memory efficiency.
 
@@ -165,7 +183,7 @@ class LossComputeBase(nn.Module):
         """
         batch_stats = onmt.utils.Statistics()
         range_ = (cur_trunc, cur_trunc + trunc_size)
-        shard_state = self._make_shard_state(batch, output, range_, attns)
+        shard_state = self._make_shard_state(batch, output, range_, attns, target=target)
         for shard in shards(shard_state, shard_size):
             loss, stats = self._compute_loss(batch, **shard)
             loss.div(float(normalization)).backward()
@@ -233,11 +251,17 @@ class NMTLossCompute(LossComputeBase):
     def __init__(self, criterion, generator, normalization="sents"):
         super(NMTLossCompute, self).__init__(criterion, generator)
 
-    def _make_shard_state(self, batch, output, range_, attns=None):
-        return {
-            "output": output,
-            "target": batch.tgt[range_[0] + 1: range_[1]],
-        }
+    def _make_shard_state(self, batch, output, range_, attns=None, target='tgt1'):
+        if target == 'tgt1':
+            return {
+                "output": output,
+                "target": batch.tgt1[range_[0] + 1: range_[1]],
+            }
+        elif target == 'tgt2':
+            return {
+                "output": output,
+                "target": batch.tgt2[range_[0] + 1: range_[1]],
+            }
 
     def _compute_loss(self, batch, output, target):
         bottled_output = self._bottle(output)
@@ -294,8 +318,7 @@ def shards(state, shard_size, eval_only=False):
         # want a sequence of dictionaries of tensors.
         # First, unzip the dictionary into a sequence of keys and a
         # sequence of tensor-like sequences.
-        keys, values = zip(*((k, [v_chunk for v_chunk in v_split])
-                             for k, (_, v_split) in non_none.items()))
+        keys, values = zip(*((k, [v_chunk for v_chunk in v_split]) for k, (_, v_split) in non_none.items()))
 
         # Now, yield a dictionary for each shard. The keys are always
         # the same. values is a sequence of length #keys where each
@@ -310,7 +333,6 @@ def shards(state, shard_size, eval_only=False):
         variables = []
         for k, (v, v_split) in non_none.items():
             if isinstance(v, torch.Tensor) and state[k].requires_grad:
-                variables.extend(zip(torch.split(state[k], shard_size),
-                                     [v_chunk.grad for v_chunk in v_split]))
+                variables.extend(zip(torch.split(state[k], shard_size), [v_chunk.grad for v_chunk in v_split]))
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads)

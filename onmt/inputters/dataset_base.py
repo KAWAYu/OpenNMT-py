@@ -58,16 +58,15 @@ class DatasetBase(Dataset):
 
     def __reduce_ex__(self, proto):
         # This is a hack. Something is broken with torch pickle.
-        return super(DatasetBase, self).__reduce_ex__()
+        return super(DatasetBase, self).__reduce_ex__(proto)
 
-    def __init__(self, fields, src_examples_iter, tgt_examples_iter,
-                 filter_pred=None):
+    def __init__(self, fields, src_examples_iter, tgt1_examples_iter, tgt2_examples_iter, filter_pred=None):
 
         dynamic_dict = 'src_map' in fields and 'alignment' in fields
 
-        if tgt_examples_iter is not None:
-            examples_iter = (self._join_dicts(src, tgt) for src, tgt in
-                             zip(src_examples_iter, tgt_examples_iter))
+        if tgt1_examples_iter is not None and tgt2_examples_iter is not None:
+            examples_iter = (self._join_dicts(src, tgt1, tgt2) for src, tgt1, tgt2 in
+                             zip(src_examples_iter, tgt1_examples_iter, tgt2_examples_iter))
         else:
             examples_iter = src_examples_iter
 
@@ -77,9 +76,9 @@ class DatasetBase(Dataset):
         for ex_dict in examples_iter:
             if dynamic_dict:
                 src_field = fields['src'][0][1]
-                tgt_field = fields['tgt'][0][1]
-                src_vocab, ex_dict = self._dynamic_dict(
-                    ex_dict, src_field, tgt_field)
+                tgt1_field = fields['tgt1'][0][1]
+                tgt2_field = fields['tgt2'][0][1]
+                src_vocab, ex_dict = self._dynamic_dict(ex_dict, src_field, tgt1_field, tgt2_field)
                 self.src_vocabs.append(src_vocab)
             ex_fields = {k: v for k, v in fields.items() if k in ex_dict}
             ex = Example.fromdict(ex_dict, ex_fields)
@@ -105,7 +104,7 @@ class DatasetBase(Dataset):
         """
         return dict(chain(*[d.items() for d in args]))
 
-    def _dynamic_dict(self, example, src_field, tgt_field):
+    def _dynamic_dict(self, example, src_field, tgt1_field, tgt2_field):
         src = src_field.tokenize(example["src"])
         # make a small vocab containing just the tokens in the source sequence
         unk = src_field.unk_token
@@ -115,11 +114,14 @@ class DatasetBase(Dataset):
         src_map = torch.LongTensor([src_vocab.stoi[w] for w in src])
         example["src_map"] = src_map
 
-        if "tgt" in example:
-            tgt = tgt_field.tokenize(example["tgt"])
-            mask = torch.LongTensor(
-                [0] + [src_vocab.stoi[w] for w in tgt] + [0])
-            example["alignment"] = mask
+        if "tgt1" in example:
+            tgt = tgt1_field.tokenize(example["tgt1"])
+            mask = torch.LongTensor([0] + [src_vocab.stoi[w] for w in tgt] + [0])
+            example["alignment1"] = mask
+        if "tgt2" in example:
+            tgt = tgt2_field.tokenize(example["tgt2"])
+            mask = torch.LongTensor([0] + [src_vocab.stoi[w] for w in tgt] + [0])
+            example["alignment2"] = mask
         return src_vocab, example
 
     @property
