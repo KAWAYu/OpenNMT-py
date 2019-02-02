@@ -72,8 +72,7 @@ def make_audio(data, vocab):
 
 
 # mix this with partial
-def _feature_tokenize(
-        string, layer=0, tok_delim=None, feat_delim=None, truncate=None):
+def _feature_tokenize(string, layer=0, tok_delim=None, feat_delim=None, truncate=None):
     tokens = string.split(tok_delim)
     if truncate is not None:
         tokens = tokens[:truncate]
@@ -84,13 +83,15 @@ def _feature_tokenize(
 
 def get_fields(
     src_data_type,
-    n_src_feats,
+    n_src1_feats,
+    n_src2_feats,
     n_tgt_feats,
     pad='<blank>',
     bos='<s>',
     eos='</s>',
     dynamic_dict=False,
-    src_truncate=None,
+    src1_truncate=None,
+    src2_truncate=None,
     tgt_truncate=None
 ):
     """
@@ -111,27 +112,26 @@ def get_fields(
     fields = {'src': [], 'tgt': []}
 
     if src_data_type == 'text':
-        feat_delim = u"￨" if n_src_feats > 0 else None
-        for i in range(n_src_feats + 1):
-            name = "src_feat_" + str(i - 1) if i > 0 else "src"
-            tokenize = partial(
-                _feature_tokenize,
-                layer=i,
-                truncate=src_truncate,
-                feat_delim=feat_delim)
+        feat_delim = u"￨" if n_src1_feats > 0 else None
+        for i in range(n_src1_feats + 1):
+            name = "src1_feat_" + str(i - 1) if i > 0 else "src1"
+            tokenize = partial(_feature_tokenize, layer=i, truncate=src1_truncate, feat_delim=feat_delim)
             use_len = i == 0
-            feat = Field(
-                pad_token=pad, tokenize=tokenize, include_lengths=use_len)
-            fields['src'].append((name, feat))
+            feat = Field(pad_token=pad, tokenize=tokenize, include_lengths=use_len)
+            fields['src1'].append((name, feat))
+
+        feat_delim = u"￨" if n_src2_feats > 0 else None
+        for i in range(n_src2_feats + 1):
+            name = "src2_feat_" + str(i - 1) if i > 0 else "src2"
+            tokenize = partial(_feature_tokenize, layer=i, truncate=src2_truncate, feat_delim=feat_delim)
+            use_len = i == 0
+            feat = Field(pad_token=pad, tokenize=tokenize, include_lengths=use_len)
+            fields['src2'].append((name, feat))
     elif src_data_type == 'img':
-        img = Field(
-            use_vocab=False, dtype=torch.float,
-            postprocessing=make_img, sequential=False)
+        img = Field(use_vocab=False, dtype=torch.float, postprocessing=make_img, sequential=False)
         fields["src"].append(('src', img))
     else:
-        audio = Field(
-            use_vocab=False, dtype=torch.float,
-            postprocessing=make_audio, sequential=False)
+        audio = Field(use_vocab=False, dtype=torch.float, postprocessing=make_audio, sequential=False)
         fields["src"].append(('src', audio))
 
     if src_data_type == 'audio':
@@ -143,31 +143,21 @@ def get_fields(
     feat_delim = u"￨" if n_tgt_feats > 0 else None
     for i in range(n_tgt_feats + 1):
         name = "tgt_feat_" + str(i - 1) if i > 0 else "tgt"
-        tokenize = partial(
-            _feature_tokenize,
-            layer=i,
-            truncate=tgt_truncate,
-            feat_delim=feat_delim)
+        tokenize = partial(_feature_tokenize, layer=i, truncate=tgt_truncate, feat_delim=feat_delim)
 
-        feat = Field(
-            init_token=bos,
-            eos_token=eos,
-            pad_token=pad,
-            tokenize=tokenize)
+        feat = Field(init_token=bos, eos_token=eos, pad_token=pad, tokenize=tokenize)
         fields['tgt'].append((name, feat))
 
     indices = Field(use_vocab=False, dtype=torch.long, sequential=False)
     fields["indices"] = [('indices', indices)]
 
     if dynamic_dict:
-        src_map = Field(
-            use_vocab=False, dtype=torch.float,
-            postprocessing=make_src, sequential=False)
-        fields["src_map"] = [("src_map", src_map)]
+        src1_map = Field(use_vocab=False, dtype=torch.float, postprocessing=make_src, sequential=False)
+        fields["src1_map"] = [("src1_map", src1_map)]
+        src2_map = Field(use_vocab=False, dtype=torch.float, postprocessing=make_src, sequential=False)
+        fields["src2_map"] = [("src2_map", src2_map)]
 
-        align = Field(
-            use_vocab=False, dtype=torch.long,
-            postprocessing=make_tgt, sequential=False)
+        align = Field(use_vocab=False, dtype=torch.long, postprocessing=make_tgt, sequential=False)
         fields["alignment"] = [('alignment', align)]
 
     return fields
@@ -182,9 +172,10 @@ def load_fields_from_vocab(vocab, data_type="text"):
              object from the input.
     """
     vocab = dict(vocab)
-    n_src_features = sum('src_feat_' in k for k in vocab)
+    n_src1_features = sum('src1_feat_' in k for k in vocab)
+    n_src2_features = sum('src2_feat_' in k for k in vocab)
     n_tgt_features = sum('tgt_feat_' in k for k in vocab)
-    fields = get_fields(data_type, n_src_features, n_tgt_features)
+    fields = get_fields(data_type, n_src1_features, n_src2_features, n_tgt_features)
 
     for k, vals in fields.items():
         for n, f in vals:
@@ -236,7 +227,7 @@ def make_features(batch, side, data_type='text'):
 
 
 def filter_example(ex, use_src_len=True, use_tgt_len=True,
-                   min_src_len=1, max_src_len=float('inf'),
+                   min_src1_len=1, max_src1_len=float('inf'), min_src2_len=1, max_src2_len=float('inf'),
                    min_tgt_len=1, max_tgt_len=float('inf')):
     """
     A generalized function for filtering examples based on the length of their
@@ -244,38 +235,34 @@ def filter_example(ex, use_src_len=True, use_tgt_len=True,
     argument to a dataset, it should be partially evaluated with everything
     specified except the value of the example.
     """
-    return (not use_src_len or min_src_len <= len(ex.src) <= max_src_len) and \
+    return (not use_src_len or min_src1_len <= len(ex.src1) <= max_src1_len or
+            min_src2_len <= len(ex.src2) <= max_src2_len) and \
         (not use_tgt_len or min_tgt_len <= len(ex.tgt) <= max_tgt_len)
 
 
-def build_dataset(fields, data_type, src,
-                  src_dir=None, tgt=None,
-                  src_seq_len=50, tgt_seq_len=50,
+def build_dataset(fields, data_type, src1, src2, src_dir=None, tgt=None,
+                  src1_seq_len=50, src2_seq_len=50, tgt_seq_len=50,
                   sample_rate=0, window_size=0, window_stride=0, window=None,
-                  normalize_audio=True, use_filter_pred=True,
-                  image_channel_size=3):
+                  normalize_audio=True, use_filter_pred=True, image_channel_size=3):
     """
     src: path to corpus file or iterator over source data
     tgt: path to corpus file, iterator over target data, or None
     """
-    dataset_classes = {
-        'text': TextDataset, 'img': ImageDataset, 'audio': AudioDataset
-    }
+    dataset_classes = {'text': TextDataset, 'img': ImageDataset, 'audio': AudioDataset}
     assert data_type in dataset_classes
-    assert src is not None
+    assert src1 is not None or src2 is not None
     if data_type == 'text':
-        src_examples_iter = TextDataset.make_examples(src, "src")
+        src1_examples_iter = TextDataset.make_examples(src1, "src1")
+        src2_examples_iter = TextDataset.make_examples(src2, "src2")
     elif data_type == 'img':
-        # there is a truncate argument as well, but it was never set to
-        # anything besides None before
-        src_examples_iter = ImageDataset.make_examples(
-            src, src_dir, 'src', channel_size=image_channel_size
-        )
+        # there is a truncate argument as well, but it was never set to anything besides None before
+        src1_examples_iter = ImageDataset.make_examples(src1, src_dir, 'src1', channel_size=image_channel_size)
+        src2_examples_iter = ImageDataset.make_examples(src2, src_dir, 'src2', channel_size=image_channel_size)
     else:
-        src_examples_iter = AudioDataset.make_examples(
-            src, src_dir, "src", sample_rate,
-            window_size, window_stride, window,
-            normalize_audio, None)
+        src1_examples_iter = AudioDataset.make_examples(
+            src1, src_dir, "src1", sample_rate, window_size, window_stride, window, normalize_audio, None)
+        src2_examples_iter = AudioDataset.make_examples(
+            src2, src_dir, "src2", sample_rate, window_size, window_stride, window, normalize_audio, None)
 
     if tgt is None:
         tgt_examples_iter = None
@@ -286,29 +273,27 @@ def build_dataset(fields, data_type, src,
     # if there is no target data
     if use_filter_pred and tgt_examples_iter is not None:
         filter_pred = partial(
-            filter_example, use_src_len=data_type == 'text',
-            max_src_len=src_seq_len, max_tgt_len=tgt_seq_len
-        )
+            filter_example, use_src_len=data_type == 'text', max_src1_len=src1_seq_len,
+            max_src2_len=src2_seq_len, max_tgt_len=tgt_seq_len)
     else:
         filter_pred = None
 
     dataset_cls = dataset_classes[data_type]
     dataset = dataset_cls(
-        fields, src_examples_iter, tgt_examples_iter, filter_pred=filter_pred)
+        fields, src1_examples_iter, src2_examples_iter, tgt_examples_iter, filter_pred=filter_pred)
     return dataset
 
 
 def _build_field_vocab(field, counter, **kwargs):
     # this is basically copy-pasted from torchtext.
-    all_specials = [
-        field.unk_token, field.pad_token, field.init_token, field.eos_token
-    ]
+    all_specials = [field.unk_token, field.pad_token, field.init_token, field.eos_token]
     specials = [tok for tok in all_specials if tok is not None]
     field.vocab = field.vocab_cls(counter, specials=specials, **kwargs)
 
 
 def build_vocab(train_dataset_files, fields, data_type, share_vocab,
-                src_vocab_path, src_vocab_size, src_words_min_frequency,
+                src1_vocab_path, src1_vocab_size, src1_words_min_frequency,
+                src2_vocab_path, src2_vocab_size, src2_words_min_frequency,
                 tgt_vocab_path, tgt_vocab_size, tgt_words_min_frequency):
     """
     Args:
@@ -331,16 +316,27 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
     counters = {k: Counter() for k, v in chain.from_iterable(fields.values())}
 
     # Load vocabulary
-    if src_vocab_path:
-        src_vocab = _read_vocab_file(src_vocab_path, "src")
-        src_vocab_size = len(src_vocab)
-        logger.info('Loaded source vocab has %d tokens.' % src_vocab_size)
-        for i, token in enumerate(src_vocab):
+    if src1_vocab_path:
+        src1_vocab = _read_vocab_file(src1_vocab_path, "src1")
+        src1_vocab_size = len(src1_vocab)
+        logger.info('Loaded source vocab has %d tokens.' % src1_vocab_size)
+        for i, token in enumerate(src1_vocab):
             # keep the order of tokens specified in the vocab file by
             # adding them to the counter with decreasing counting values
-            counters['src'][token] = src_vocab_size - i
+            counters['src1'][token] = src1_vocab_size - i
     else:
-        src_vocab = None
+        src1_vocab = None
+
+    if src2_vocab_path:
+        src2_vocab = _read_vocab_file(src2_vocab_path, "src2")
+        src2_vocab_size = len(src2_vocab)
+        logger.info('Loaded source vocab has %d tokens.' % src2_vocab_size)
+        for i, token in enumerate(src2_vocab):
+            # keep the order of tokens specified in the vocab file by
+            # adding them to the counter with decreasing counting values
+            counters['src2'][token] = src2_vocab_size - i
+    else:
+        src2_vocab = None
 
     if tgt_vocab_path:
         tgt_vocab = _read_vocab_file(tgt_vocab_path, "tgt")
@@ -356,8 +352,8 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
         logger.info(" * reloading %s." % path)
         for ex in dataset.examples:
             for name, field in chain.from_iterable(fields.values()):
-                has_vocab = (name == 'src' and src_vocab) or \
-                    (name == 'tgt' and tgt_vocab)
+                has_vocab = (name == 'src1' and src1_vocab) or (name == 'src2' and src2_vocab)\
+                            or (name == 'tgt' and tgt_vocab)
                 if field.sequential and not has_vocab:
                     val = getattr(ex, name, None)
                     counters[name].update(val)
@@ -375,37 +371,35 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
         _build_field_vocab(field, counters[name])
         logger.info(" * %s vocab size: %d." % (name, len(field.vocab)))
     if data_type == 'text':
-        for name, field in fields["src"]:
+        for name, field in fields["src1"]:
+            _build_field_vocab(field, counters[name])
+            logger.info(" * %s vocab size: %d." % (name, len(field.vocab)))
+        for name, field in fields["src2"]:
             _build_field_vocab(field, counters[name])
             logger.info(" * %s vocab size: %d." % (name, len(field.vocab)))
         if share_vocab:
             # `tgt_vocab_size` is ignored when sharing vocabularies
-            logger.info(" * merging src and tgt vocab...")
-            src_field = fields['src'][0][1]
+            logger.info(" * merging src1, src2 and tgt vocab...")
+            src1_field = fields['src1'][0][1]
+            src2_field = fields['src2'][0][1]
             tgt_field = fields['tgt'][0][1]
-            _merge_field_vocabs(
-                src_field, tgt_field, vocab_size=src_vocab_size,
-                min_freq=src_words_min_frequency)
-            logger.info(" * merged vocab size: %d." % len(src_field.vocab))
+            _merge_field_vocabs(src1_field, src2_field, tgt_field,
+                                vocab_size=src1_vocab_size, min_freq=src1_words_min_frequency)
+            logger.info(" * merged vocab size: %d." % len(src1_field.vocab))
 
     return fields  # is the return necessary?
 
 
-def _merge_field_vocabs(src_field, tgt_field, vocab_size, min_freq):
+def _merge_field_vocabs(src1_field, src2_field, tgt_field, vocab_size, min_freq):
     # in the long run, shouldn't it be possible to do this by calling
     # build_vocab with both the src and tgt data?
-    specials = [tgt_field.unk_token, tgt_field.pad_token,
-                tgt_field.init_token, tgt_field.eos_token]
-    merged = sum(
-        [src_field.vocab.freqs, tgt_field.vocab.freqs], Counter()
-    )
-    merged_vocab = Vocab(
-        merged, specials=specials,
-        max_size=vocab_size, min_freq=min_freq
-    )
-    src_field.vocab = merged_vocab
+    specials = [tgt_field.unk_token, tgt_field.pad_token, tgt_field.init_token, tgt_field.eos_token]
+    merged = sum([src1_field.vocab.freqs, src2_field.vocab.freqs, tgt_field.vocab.freqs], Counter())
+    merged_vocab = Vocab(merged, specials=specials, max_size=vocab_size, min_freq=min_freq)
+    src1_field.vocab = merged_vocab
+    src2_field.vocab = merged_vocab
     tgt_field.vocab = merged_vocab
-    assert len(src_field.vocab) == len(tgt_field.vocab)
+    assert len(src1_field.vocab) == len(tgt_field.vocab) and len(src2_field.vocab) == len(tgt_field.vocab)
 
 
 def _read_vocab_file(vocab_path, tag):

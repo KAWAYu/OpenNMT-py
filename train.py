@@ -26,8 +26,7 @@ def main(opt):
         raise AssertionError("BPTT is not compatible with -accum > 1")
 
     if opt.gpuid:
-        raise AssertionError("gpuid is deprecated \
-              see world_size and gpu_ranks")
+        raise AssertionError("gpuid is deprecated see world_size and gpu_ranks")
 
     nb_gpu = len(opt.gpu_ranks)
 
@@ -39,8 +38,7 @@ def main(opt):
         # Train with multiprocessing.
         procs = []
         for device_id in range(nb_gpu):
-            procs.append(mp.Process(target=run, args=(
-                opt, device_id, error_queue, ), daemon=True))
+            procs.append(mp.Process(target=run, args=(opt, device_id, error_queue, ), daemon=True))
             procs[device_id].start()
             logger.info(" Starting process pid: %d  " % procs[device_id].pid)
             error_handler.add_child(procs[device_id].pid)
@@ -58,8 +56,7 @@ def run(opt, device_id, error_queue):
     try:
         gpu_rank = onmt.utils.distributed.multi_init(opt, device_id)
         if gpu_rank != opt.gpu_ranks[device_id]:
-            raise AssertionError("An error occurred in \
-                  Distributed initialization")
+            raise AssertionError("An error occurred in Distributed initialization")
         single_main(opt, device_id)
     except KeyboardInterrupt:
         pass  # killed by parent, do nothing
@@ -79,8 +76,7 @@ class ErrorHandler(object):
         import threading
         self.error_queue = error_queue
         self.children_pids = []
-        self.error_thread = threading.Thread(
-            target=self.error_listener, daemon=True)
+        self.error_thread = threading.Thread(target=self.error_listener, daemon=True)
         self.error_thread.start()
         signal.signal(signal.SIGUSR1, self.signal_handler)
 
@@ -99,8 +95,7 @@ class ErrorHandler(object):
         for pid in self.children_pids:
             os.kill(pid, signal.SIGINT)  # kill children processes
         (rank, original_trace) = self.error_queue.get()
-        msg = """\n\n-- Tracebacks above this line can probably
-                 be ignored --\n\n"""
+        msg = """\n\n-- Tracebacks above this line can probably be ignored --\n\n"""
         msg += original_trace
         raise Exception(msg)
 

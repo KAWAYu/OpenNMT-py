@@ -24,8 +24,7 @@ def check_existing_pt_files(opt):
     for t in ['train', 'valid', 'vocab']:
         path = pattern.format(t)
         if glob.glob(path):
-            sys.stderr.write("Please backup existing pt files: %s, "
-                             "to avoid overwriting them!\n" % path)
+            sys.stderr.write("Please backup existing pt files: %s, to avoid overwriting them!\n" % path)
             sys.exit(1)
 
 
@@ -60,42 +59,38 @@ def build_save_dataset(corpus_type, fields, opt):
     assert corpus_type in ['train', 'valid']
 
     if corpus_type == 'train':
-        src = opt.train_src
+        src1 = opt.train_src1
+        src2 = opt.train_src2
         tgt = opt.train_tgt
     else:
-        src = opt.valid_src
+        src1 = opt.valid_src1
+        src2 = opt.valid_src2
         tgt = opt.valid_tgt
 
-    logger.info("Reading source and target files: %s %s." % (src, tgt))
+    logger.info("Reading source1, source2 and target files: %s %s %s." % (src1, src2, tgt))
 
-    src_shards = split_corpus(src, opt.shard_size)
+    src1_shards = split_corpus(src1, opt.shard_size)
+    src2_shards = split_corpus(src2, opt.shard_size)
     tgt_shards = split_corpus(tgt, opt.shard_size)
-    shard_pairs = zip(src_shards, tgt_shards)
+    shard_pairs = zip(src1_shards, src2_shards, tgt_shards)
     dataset_paths = []
 
-    for i, (src_shard, tgt_shard) in enumerate(shard_pairs):
-        assert len(src_shard) == len(tgt_shard)
+    for i, (src1_shard, src2_shard, tgt_shard) in enumerate(shard_pairs):
+        assert len(src1_shard) == len(tgt_shard) and len(src1_shard) == len(src2_shard) \
+               and len(src2_shard) == len(tgt_shard)
         logger.info("Building shard %d." % i)
         dataset = inputters.build_dataset(
-            fields, opt.data_type,
-            src=src_shard,
-            tgt=tgt_shard,
-            src_dir=opt.src_dir,
-            src_seq_len=opt.src_seq_length,
-            tgt_seq_len=opt.tgt_seq_length,
-            sample_rate=opt.sample_rate,
-            window_size=opt.window_size,
-            window_stride=opt.window_stride,
-            window=opt.window,
-            image_channel_size=opt.image_channel_size,
-            use_filter_pred=corpus_type == 'train' or opt.filter_valid
+            fields, opt.data_type, src1=src1_shard, src2=src2_shard, tgt=tgt_shard,
+            src_dir=opt.src_dir, src1_seq_len=opt.src1_seq_length, src2_seq_len=opt.src2_seq_length,
+            tgt_seq_len=opt.tgt_seq_length, sample_rate=opt.sample_rate,
+            window_size=opt.window_size, window_stride=opt.window_stride, window=opt.window,
+            image_channel_size=opt.image_channel_size, use_filter_pred=corpus_type == 'train' or opt.filter_valid
         )
 
         data_path = "{:s}.{:s}.{:d}.pt".format(opt.save_data, corpus_type, i)
         dataset_paths.append(data_path)
 
-        logger.info(" * saving %sth %s data shard to %s."
-                    % (i, corpus_type, data_path))
+        logger.info(" * saving %sth %s data shard to %s." % (i, corpus_type, data_path))
 
         dataset.save(data_path)
 
@@ -110,7 +105,8 @@ def build_save_dataset(corpus_type, fields, opt):
 def build_save_vocab(train_dataset, fields, opt):
     fields = inputters.build_vocab(
         train_dataset, fields, opt.data_type, opt.share_vocab,
-        opt.src_vocab, opt.src_vocab_size, opt.src_words_min_frequency,
+        opt.src1_vocab, opt.src1_vocab_size, opt.src1_words_min_frequency,
+        opt.src2_vocab, opt.src2_vocab_size, opt.src2_words_min_frequency,
         opt.tgt_vocab, opt.tgt_vocab_size, opt.tgt_words_min_frequency
     )
 
@@ -133,34 +129,30 @@ def main():
     opt = parse_args()
 
     assert opt.max_shard_size == 0, \
-        "-max_shard_size is deprecated. Please use \
-        -shard_size (number of examples) instead."
+        "-max_shard_size is deprecated. Please use -shard_size (number of examples) instead."
     assert opt.shuffle == 0, \
-        "-shuffle is not implemented. Please shuffle \
-        your data before pre-processing."
+        "-shuffle is not implemented. Please shuffle your data before pre-processing."
 
-    assert os.path.isfile(opt.train_src) and os.path.isfile(opt.train_tgt), \
+    assert os.path.isfile(opt.train_src1) and os.path.isfile(opt.train_src2) and os.path.isfile(opt.train_tgt), \
         "Please check path of your train src and tgt files!"
 
-    assert os.path.isfile(opt.valid_src) and os.path.isfile(opt.valid_tgt), \
+    assert os.path.isfile(opt.valid_src1) and os.path.isfile(opt.valid_src2) and os.path.isfile(opt.valid_tgt), \
         "Please check path of your valid src and tgt files!"
 
     init_logger(opt.log_file)
     logger.info("Extracting features...")
 
-    src_nfeats = count_features(opt.train_src) if opt.data_type == 'text' \
-        else 0
+    src1_nfeats = count_features(opt.train_src1) if opt.data_type == 'text' else 0
+    src2_nfeats = count_features(opt.train_src2) if opt.data_type == 'text' else 0
     tgt_nfeats = count_features(opt.train_tgt)  # tgt always text so far
-    logger.info(" * number of source features: %d." % src_nfeats)
+    logger.info(" * number of source features: %d." % src1_nfeats)
+    logger.info(" * number of source features: %d." % src2_nfeats)
     logger.info(" * number of target features: %d." % tgt_nfeats)
 
     logger.info("Building `Fields` object...")
     fields = inputters.get_fields(
-        opt.data_type,
-        src_nfeats,
-        tgt_nfeats,
-        dynamic_dict=opt.dynamic_dict,
-        src_truncate=opt.src_seq_length_trunc,
+        opt.data_type, src1_nfeats, src2_nfeats, tgt_nfeats, dynamic_dict=opt.dynamic_dict,
+        src1_truncate=opt.src1_seq_length_trunc, src2_truncate=opt.src2_seq_length_trunc,
         tgt_truncate=opt.tgt_seq_length_trunc)
 
     logger.info("Building & saving training data...")

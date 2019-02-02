@@ -7,13 +7,8 @@ from onmt.utils.logging import logger
 
 
 def build_model_saver(model_opt, opt, model, fields, optim):
-    model_saver = ModelSaver(opt.save_model,
-                             model,
-                             model_opt,
-                             fields,
-                             optim,
-                             opt.save_checkpoint_steps,
-                             opt.keep_checkpoint)
+    model_saver = ModelSaver(
+        opt.save_model, model, model_opt, fields, optim, opt.save_checkpoint_steps, opt.keep_checkpoint)
     return model_saver
 
 
@@ -25,8 +20,7 @@ class ModelSaverBase(object):
             * `_rm_checkpoint
     """
 
-    def __init__(self, base_path, model, model_opt, fields, optim,
-                 save_checkpoint_steps, keep_checkpoint=-1):
+    def __init__(self, base_path, model, model_opt, fields, optim, save_checkpoint_steps, keep_checkpoint=-1):
         self.base_path = base_path
         self.model = model
         self.model_opt = model_opt
@@ -86,23 +80,17 @@ class ModelSaver(ModelSaverBase):
         Simple model saver to filesystem
     """
 
-    def __init__(self, base_path, model, model_opt, fields, optim,
-                 save_checkpoint_steps, keep_checkpoint=0):
+    def __init__(self, base_path, model, model_opt, fields, optim, save_checkpoint_steps, keep_checkpoint=0):
         super(ModelSaver, self).__init__(
-            base_path, model, model_opt, fields, optim,
-            save_checkpoint_steps, keep_checkpoint)
+            base_path, model, model_opt, fields, optim, save_checkpoint_steps, keep_checkpoint)
 
     def _save(self, step):
-        real_model = (self.model.module
-                      if isinstance(self.model, nn.DataParallel)
-                      else self.model)
+        real_model = (self.model.module if isinstance(self.model, nn.DataParallel) else self.model)
         real_generator = (real_model.generator.module
-                          if isinstance(real_model.generator, nn.DataParallel)
-                          else real_model.generator)
+                          if isinstance(real_model.generator, nn.DataParallel) else real_model.generator)
 
         model_state_dict = real_model.state_dict()
-        model_state_dict = {k: v for k, v in model_state_dict.items()
-                            if 'generator' not in k}
+        model_state_dict = {k: v for k, v in model_state_dict.items() if 'generator' not in k}
         generator_state_dict = real_generator.state_dict()
         checkpoint = {
             'model': model_state_dict,

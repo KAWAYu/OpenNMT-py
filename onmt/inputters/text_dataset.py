@@ -24,12 +24,11 @@ class TextDataset(DatasetBase):
     @staticmethod
     def sort_key(ex):
         if hasattr(ex, "tgt"):
-            return len(ex.src), len(ex.tgt)
-        return len(ex.src)
+            return len(ex.src1), len(ex.src2), len(ex.tgt)
+        return len(ex.src1), len(ex.src2)
 
     @staticmethod
-    def collapse_copy_scores(scores, batch, tgt_vocab, src_vocabs,
-                             batch_dim=1, batch_offset=None):
+    def collapse_copy_scores(scores, batch, tgt_vocab, src_vocabs, batch_dim=1, batch_offset=None):
         """
         Given scores from an expanded dictionary
         corresponeding to a batch, sums together copies,
@@ -76,4 +75,5 @@ class TextDataset(DatasetBase):
 
     @property
     def can_copy(self):
-        return "src_map" in self.fields and "alignment" in self.fields
+        return "src1_map" in self.fields and "alignment1" in self.fields \
+               and "src2_map" in self.fields and "alignment2" in self.fields

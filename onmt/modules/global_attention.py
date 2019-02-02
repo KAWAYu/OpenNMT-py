@@ -67,16 +67,13 @@ class GlobalAttention(nn.Module):
 
     """
 
-    def __init__(self, dim, coverage=False, attn_type="dot",
-                 attn_func="softmax"):
+    def __init__(self, dim, coverage=False, attn_type="dot", attn_func="softmax"):
         super(GlobalAttention, self).__init__()
 
         self.dim = dim
-        assert attn_type in ["dot", "general", "mlp"], (
-            "Please select a valid attention type.")
+        assert attn_type in ["dot", "general", "mlp"], "Please select a valid attention type."
         self.attn_type = attn_type
-        assert attn_func in ["softmax", "sparsemax"], (
-            "Please select a valid attention function.")
+        assert attn_func in ["softmax", "sparsemax"], "Please select a valid attention function."
         self.attn_func = attn_func
 
         if self.attn_type == "general":
@@ -135,7 +132,7 @@ class GlobalAttention(nn.Module):
 
             return self.v(wquh.view(-1, dim)).view(tgt_batch, tgt_len, src_len)
 
-    def forward(self, source, memory_bank, memory_lengths=None, coverage=None):
+    def forward(self, source, memory_bank1, memory_bank2, memory1_lengths=None, memory2_lengths=None, coverage=None):
         """
 
         Args:
@@ -159,69 +156,90 @@ class GlobalAttention(nn.Module):
         else:
             one_step = False
 
-        batch, source_l, dim = memory_bank.size()
+        batch1, source1_l, dim1 = memory_bank1.size()
+        batch2, source2_l, dim2 = memory_bank2.size()
         batch_, target_l, dim_ = source.size()
-        aeq(batch, batch_)
-        aeq(dim, dim_)
-        aeq(self.dim, dim)
+        aeq(batch1, batch2, batch_)
+        aeq(dim1, dim2, dim_)
+        aeq(self.dim, dim1, dim2)
         if coverage is not None:
             batch_, source_l_ = coverage.size()
-            aeq(batch, batch_)
-            aeq(source_l, source_l_)
+            aeq(batch1, batch2, batch_)
+            aeq(source1_l, source2_l, source_l_)
 
         if coverage is not None:
             cover = coverage.view(-1).unsqueeze(1)
-            memory_bank += self.linear_cover(cover).view_as(memory_bank)
-            memory_bank = torch.tanh(memory_bank)
+            memory_bank1 += self.linear_cover(cover).view_as(memory_bank1)
+            memory_bank2 += self.linear_cover(cover).view_as(memory_bank2)
+            memory_bank1 = torch.tanh(memory_bank1)
+            memory_bank2 = torch.tanh(memory_bank2)
 
         # compute attention scores, as in Luong et al.
-        align = self.score(source, memory_bank)
+        align1 = self.score(source, memory_bank1)
+        align2 = self.score(source, memory_bank2)
 
-        if memory_lengths is not None:
-            mask = sequence_mask(memory_lengths, max_len=align.size(-1))
-            mask = mask.unsqueeze(1)  # Make it broadcastable.
-            align.masked_fill_(1 - mask, -float('inf'))
+        if memory1_lengths is not None:
+            mask1 = sequence_mask(memory1_lengths, max_len=align1.size(-1))
+            mask1 = mask1.unsqueeze(1)  # Make it broadcastable.
+            align1.masked_fill_(1 - mask1, -float('inf'))
+
+        if memory2_lengths is not None:
+            mask2 = sequence_mask(memory2_lengths, max_len=align2.size(-1))
+            mask2 = mask2.unsqueeze(1)  # Make it broadcastable.
+            align2.masked_fill_(1 - mask2, -float('inf'))
 
         # Softmax or sparsemax to normalize attention weights
         if self.attn_func == "softmax":
-            align_vectors = F.softmax(align.view(batch*target_l, source_l), -1)
+            align1_vectors = F.softmax(align1.view(batch1*target_l, source1_l), -1)
+            align2_vectors = F.softmax(align2.view(batch2*target_l, source2_l), -1)
         else:
-            align_vectors = sparsemax(align.view(batch*target_l, source_l), -1)
-        align_vectors = align_vectors.view(batch, target_l, source_l)
+            align1_vectors = sparsemax(align1.view(batch1*target_l, source1_l), -1)
+            align2_vectors = sparsemax(align2.view(batch2*target_l, source2_l), -1)
+        align1_vectors = align1_vectors.view(batch1, target_l, source1_l)
+        align2_vectors = align2_vectors.view(batch2, target_l, source2_l)
 
         # each context vector c_t is the weighted average
         # over all the source hidden states
-        c = torch.bmm(align_vectors, memory_bank)
+        c = torch.bmm(align1_vectors, memory_bank1) + torch.bmm(align2_vectors, memory_bank2)
 
         # concatenate
-        concat_c = torch.cat([c, source], 2).view(batch*target_l, dim*2)
-        attn_h = self.linear_out(concat_c).view(batch, target_l, dim)
+        concat_c = torch.cat([c, source], 2).view(batch1*target_l, dim1*2)
+        attn_h = self.linear_out(concat_c).view(batch1, target_l, dim1)
         if self.attn_type in ["general", "dot"]:
             attn_h = torch.tanh(attn_h)
 
         if one_step:
             attn_h = attn_h.squeeze(1)
-            align_vectors = align_vectors.squeeze(1)
+            align1_vectors = align1_vectors.squeeze(1)
+            align2_vectors = align2_vectors.squeeze(1)
 
             # Check output sizes
             batch_, dim_ = attn_h.size()
-            aeq(batch, batch_)
-            aeq(dim, dim_)
-            batch_, source_l_ = align_vectors.size()
-            aeq(batch, batch_)
-            aeq(source_l, source_l_)
+            aeq(batch1, batch2, batch_)
+            aeq(dim1, dim2, dim_)
+            batch_, source_l_ = align1_vectors.size()
+            aeq(batch1, batch2, batch_)
+            aeq(source1_l, source2_l, source_l_)
+            batch_, source_l_ = align2_vectors.size()
+            aeq(batch1, batch2, batch_)
+            aeq(source1_l, source2_l, source_l_)
 
         else:
             attn_h = attn_h.transpose(0, 1).contiguous()
-            align_vectors = align_vectors.transpose(0, 1).contiguous()
+            align1_vectors = align1_vectors.transpose(0, 1).contiguous()
+            align2_vectors = align2_vectors.transpose(0, 1).contiguous()
             # Check output sizes
             target_l_, batch_, dim_ = attn_h.size()
             aeq(target_l, target_l_)
-            aeq(batch, batch_)
-            aeq(dim, dim_)
-            target_l_, batch_, source_l_ = align_vectors.size()
+            aeq(batch1, batch2, batch_)
+            aeq(dim1, dim2, dim_)
+            target_l_, batch_, source_l_ = align1_vectors.size()
             aeq(target_l, target_l_)
-            aeq(batch, batch_)
-            aeq(source_l, source_l_)
+            aeq(batch1, batch2, batch_)
+            aeq(source1_l, source2_l, source_l_)
+            target_l_, batch_, source_l_ = align2_vectors.size()
+            aeq(target_l, target_l_)
+            aeq(batch1, batch2, batch_)
+            aeq(source1_l, source2_l, source_l_)
 
-        return attn_h, align_vectors
+        return attn_h, align1_vectors, align2_vectors

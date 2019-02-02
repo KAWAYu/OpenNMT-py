@@ -60,27 +60,29 @@ class DatasetBase(Dataset):
         # This is a hack. Something is broken with torch pickle.
         return super(DatasetBase, self).__reduce_ex__()
 
-    def __init__(self, fields, src_examples_iter, tgt_examples_iter,
-                 filter_pred=None):
+    def __init__(self, fields, src1_examples_iter, src2_examples_iter, tgt_examples_iter, filter_pred=None):
 
         dynamic_dict = 'src_map' in fields and 'alignment' in fields
 
         if tgt_examples_iter is not None:
-            examples_iter = (self._join_dicts(src, tgt) for src, tgt in
-                             zip(src_examples_iter, tgt_examples_iter))
+            examples_iter = (self._join_dicts(src1, src2, tgt) for src1, src2, tgt in
+                             zip(src1_examples_iter, src2_examples_iter, tgt_examples_iter))
         else:
-            examples_iter = src_examples_iter
+            examples_iter = (self._join_dicts(src1, src2) for src1, src2 in
+                             zip(src1_examples_iter, src2_examples_iter))
 
         # self.src_vocabs is used in collapse_copy_scores and Translator.py
-        self.src_vocabs = []
+        self.src1_vocabs = []
+        self.src2_vocabs = []
         examples = []
         for ex_dict in examples_iter:
             if dynamic_dict:
-                src_field = fields['src'][0][1]
+                src1_field = fields['src1'][0][1]
+                src2_field = fields['src2'][0][1]
                 tgt_field = fields['tgt'][0][1]
-                src_vocab, ex_dict = self._dynamic_dict(
-                    ex_dict, src_field, tgt_field)
-                self.src_vocabs.append(src_vocab)
+                src1_vocab, src2_vocab, ex_dict = self._dynamic_dict(ex_dict, src1_field, src2_field, tgt_field)
+                self.src1_vocabs.append(src1_vocab)
+                self.src2_vocabs.append(src2_vocab)
             ex_fields = {k: v for k, v in fields.items() if k in ex_dict}
             ex = Example.fromdict(ex_dict, ex_fields)
             examples.append(ex)
@@ -105,22 +107,29 @@ class DatasetBase(Dataset):
         """
         return dict(chain(*[d.items() for d in args]))
 
-    def _dynamic_dict(self, example, src_field, tgt_field):
-        src = src_field.tokenize(example["src"])
+    def _dynamic_dict(self, example, src1_field, src2_field, tgt_field):
+        src1 = src1_field.tokenize(example["src1"])
+        src2 = src2_field.tokenize(example["src2"])
         # make a small vocab containing just the tokens in the source sequence
-        unk = src_field.unk_token
-        pad = src_field.pad_token
-        src_vocab = Vocab(Counter(src), specials=[unk, pad])
+        unk = src1_field.unk_token
+        pad = src1_field.pad_token
+        src1_vocab = Vocab(Counter(src1), specials=[unk, pad])
+        unk = src2_field.unk_token
+        pad = src2_field.pad_token
+        src2_vocab = Vocab(Counter(src2), specials=[unk, pad])
         # Map source tokens to indices in the dynamic dict.
-        src_map = torch.LongTensor([src_vocab.stoi[w] for w in src])
-        example["src_map"] = src_map
+        src1_map = torch.LongTensor([src1_vocab.stoi[w] for w in src1])
+        example["src1_map"] = src1_map
+        src2_map = torch.LongTensor([src1_vocab.stoi[w] for w in src2])
+        example["src2_map"] = src2_map
 
         if "tgt" in example:
             tgt = tgt_field.tokenize(example["tgt"])
-            mask = torch.LongTensor(
-                [0] + [src_vocab.stoi[w] for w in tgt] + [0])
-            example["alignment"] = mask
-        return src_vocab, example
+            mask1 = torch.LongTensor([0] + [src1_vocab.stoi[w] for w in tgt] + [0])
+            mask2 = torch.LongTensor([0] + [src2_vocab.stoi[w] for w in tgt] + [0])
+            example["alignment1"] = mask1
+            example["alignment2"] = mask2
+        return src1_vocab, src2_vocab, example
 
     @property
     def can_copy(self):

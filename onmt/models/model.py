@@ -13,17 +13,23 @@ class NMTModel(nn.Module):
       multi<gpu (bool): setup for multigpu support
     """
 
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder1, encoder2, decoder):
         super(NMTModel, self).__init__()
-        self.encoder = encoder
+        self.encoder1 = encoder1
+        self.encoder2 = encoder2
         self.decoder = decoder
 
-    def forward(self, src, tgt, lengths):
+    def forward(self, src1, src2, tgt, lengths):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
         Args:
-            src (:obj:`Tensor`):
+            src1 (:obj:`Tensor`):
+                a source sequence passed to encoder.
+                typically for inputs this will be a padded :obj:`LongTensor`
+                of size `[len x batch x features]`. however, may be an
+                image or other generic input depending on encoder.
+            src2 (:obj:`Tensor`):
                 a source sequence passed to encoder.
                 typically for inputs this will be a padded :obj:`LongTensor`
                 of size `[len x batch x features]`. however, may be an
@@ -40,9 +46,10 @@ class NMTModel(nn.Module):
         """
         tgt = tgt[:-1]  # exclude last target from inputs
 
-        enc_state, memory_bank, lengths = self.encoder(src, lengths)
-        self.decoder.init_state(src, memory_bank, enc_state)
-        dec_out, attns = self.decoder(tgt, memory_bank,
-                                      memory_lengths=lengths)
+        enc1_state, memory_bank1, lengths1 = self.encoder1(src1, lengths)
+        enc2_state, memory_bank2, lengths2 = self.encoder2(src2, lengths)
+        self.decoder.init_state(src1, src2, memory_bank1, memory_bank2, enc1_state, enc2_state)
+        dec_out, attns = self.decoder(
+            tgt, memory_bank1, memory_bank2, memory1_lengths=lengths1, memory2_length=lengths2)
 
         return dec_out, attns
