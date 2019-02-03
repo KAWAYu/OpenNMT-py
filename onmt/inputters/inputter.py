@@ -109,7 +109,7 @@ def get_fields(
         "Data type not implemented"
     assert not dynamic_dict or src_data_type == 'text', \
         'it is not possible to use dynamic_dict with non-text input'
-    fields = {'src': [], 'tgt': []}
+    fields = {'src1': [], 'src2': [], 'tgt': []}
 
     if src_data_type == 'text':
         feat_delim = u"￨" if n_src1_feats > 0 else None
@@ -368,14 +368,14 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
             gc.collect()
 
     for name, field in fields["tgt"]:
-        _build_field_vocab(field, counters[name])
+        _build_field_vocab(field, counters[name], max_size=tgt_vocab_size, min_freq=tgt_words_min_frequency)
         logger.info(" * %s vocab size: %d." % (name, len(field.vocab)))
     if data_type == 'text':
         for name, field in fields["src1"]:
-            _build_field_vocab(field, counters[name])
+            _build_field_vocab(field, counters[name], max_size=src1_vocab_size, min_freq=src1_words_min_frequency)
             logger.info(" * %s vocab size: %d." % (name, len(field.vocab)))
         for name, field in fields["src2"]:
-            _build_field_vocab(field, counters[name])
+            _build_field_vocab(field, counters[name], max_size=src2_vocab_size, min_freq=src2_words_min_frequency)
             logger.info(" * %s vocab size: %d." % (name, len(field.vocab)))
         if share_vocab:
             # `tgt_vocab_size` is ignored when sharing vocabularies

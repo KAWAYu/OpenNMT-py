@@ -84,7 +84,7 @@ class GlobalAttention(nn.Module):
             self.v = nn.Linear(dim, 1, bias=False)
         # mlp wants it with bias
         out_bias = self.attn_type == "mlp"
-        self.linear_out = nn.Linear(dim * 2, dim, bias=out_bias)
+        self.linear_out = nn.Linear(dim * 3, dim, bias=out_bias)
 
         if coverage:
             self.linear_cover = nn.Linear(1, dim, bias=False)
@@ -200,10 +200,11 @@ class GlobalAttention(nn.Module):
 
         # each context vector c_t is the weighted average
         # over all the source hidden states
-        c = torch.bmm(align1_vectors, memory_bank1) + torch.bmm(align2_vectors, memory_bank2)
+        c1 = torch.bmm(align1_vectors, memory_bank1)
+        c2 = torch.bmm(align2_vectors, memory_bank2)
 
         # concatenate
-        concat_c = torch.cat([c, source], 2).view(batch1*target_l, dim1*2)
+        concat_c = torch.cat([c1, c2, source], 2).view(batch1*target_l, dim1*3)
         attn_h = self.linear_out(concat_c).view(batch1, target_l, dim1)
         if self.attn_type in ["general", "dot"]:
             attn_h = torch.tanh(attn_h)
