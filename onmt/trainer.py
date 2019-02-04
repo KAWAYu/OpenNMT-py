@@ -16,8 +16,7 @@ import onmt.utils
 from onmt.utils.logging import logger
 
 
-def build_trainer(opt, device_id, model, fields,
-                  optim, data_type, model_saver=None):
+def build_trainer(opt, device_id, model, fields, optim, data_type, model_saver=None):
     """
     Simplify `Trainer` creation based on user `opt`s*
 
@@ -33,8 +32,7 @@ def build_trainer(opt, device_id, model, fields,
     """
     tgt_field = fields['tgt'][0][1]
     train_loss = onmt.utils.loss.build_loss_compute(model, tgt_field, opt)
-    valid_loss = onmt.utils.loss.build_loss_compute(
-        model, tgt_field, opt, train=False)
+    valid_loss = onmt.utils.loss.build_loss_compute(model, tgt_field, opt, train=False)
 
     trunc_size = opt.truncated_decoder  # Badly named...
     shard_size = opt.max_generator_batches
@@ -82,8 +80,7 @@ class Trainer(object):
                 Thus nothing will be saved if this parameter is None
     """
 
-    def __init__(self, model, train_loss, valid_loss, optim,
-                 trunc_size=0, shard_size=32, data_type='text',
+    def __init__(self, model, train_loss, valid_loss, optim, trunc_size=0, shard_size=32, data_type='text',
                  norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None):
         # Basic attributes.
@@ -105,8 +102,7 @@ class Trainer(object):
         assert grad_accum_count > 0
         if grad_accum_count > 1:
             assert(self.trunc_size == 0), \
-                """To enable accumulated gradients,
-                   you must disable target sequence truncating."""
+            """To enable accumulated gradients, you must disable target sequence truncating."""
 
         # Set model in training mode.
         self.model.train()
@@ -146,8 +142,7 @@ class Trainer(object):
             for i, batch in enumerate(train_iter):
                 if self.n_gpu == 0 or (i % self.n_gpu == self.gpu_rank):
                     if self.gpu_verbose_level > 1:
-                        logger.info("GpuRank %d: index: %d accum: %d"
-                                    % (self.gpu_rank, i, accum))
+                        logger.info("GpuRank %d: index: %d accum: %d" % (self.gpu_rank, i, accum))
 
                     true_batchs.append(batch)
 
@@ -161,41 +156,29 @@ class Trainer(object):
                     if accum == self.grad_accum_count:
                         reduce_counter += 1
                         if self.gpu_verbose_level > 0:
-                            logger.info("GpuRank %d: reduce_counter: %d \
-                                        n_minibatch %d"
-                                        % (self.gpu_rank, reduce_counter,
-                                           len(true_batchs)))
+                            logger.info("GpuRank %d: reduce_counter: %d n_minibatch %d"
+                                        % (self.gpu_rank, reduce_counter, len(true_batchs)))
                         if self.n_gpu > 1:
-                            normalization = sum(onmt.utils.distributed
-                                                .all_gather_list
-                                                (normalization))
+                            normalization = sum(onmt.utils.distributed.all_gather_list(normalization))
 
-                        self._gradient_accumulation(
-                            true_batchs, normalization, total_stats,
-                            report_stats)
+                        self._gradient_accumulation(true_batchs, normalization, total_stats, report_stats)
 
                         report_stats = self._maybe_report_training(
-                            step, train_steps,
-                            self.optim.learning_rate,
-                            report_stats)
+                            step, train_steps, self.optim.learning_rate, report_stats)
 
                         true_batchs = []
                         accum = 0
                         normalization = 0
-                        if (step % valid_steps == 0):
+                        if step % valid_steps == 0:
                             if self.gpu_verbose_level > 0:
-                                logger.info('GpuRank %d: validate step %d'
-                                            % (self.gpu_rank, step))
+                                logger.info('GpuRank %d: validate step %d' % (self.gpu_rank, step))
                             valid_stats = self.validate(valid_iter)
                             if self.gpu_verbose_level > 0:
-                                logger.info('GpuRank %d: gather valid stat \
-                                            step %d' % (self.gpu_rank, step))
+                                logger.info('GpuRank %d: gather valid stat step %d' % (self.gpu_rank, step))
                             valid_stats = self._maybe_gather_stats(valid_stats)
                             if self.gpu_verbose_level > 0:
-                                logger.info('GpuRank %d: report stat step %d'
-                                            % (self.gpu_rank, step))
-                            self._report_step(self.optim.learning_rate,
-                                              step, valid_stats=valid_stats)
+                                logger.info('GpuRank %d: report stat step %d' % (self.gpu_rank, step))
+                            self._report_step(self.optim.learning_rate, step, valid_stats=valid_stats)
 
                         if self.gpu_rank == 0:
                             self._maybe_save(step)
@@ -203,8 +186,7 @@ class Trainer(object):
                         if step > train_steps:
                             break
             if self.gpu_verbose_level > 0:
-                logger.info('GpuRank %d: we completed an epoch \
-                            at step %d' % (self.gpu_rank, step))
+                logger.info('GpuRank %d: we completed an epoch at step %d' % (self.gpu_rank, step))
 
         return total_stats
 
@@ -221,9 +203,10 @@ class Trainer(object):
             stats = onmt.utils.Statistics()
 
             for batch in valid_iter:
-                src = inputters.make_features(batch, 'src', self.data_type)
+                src1 = inputters.make_features(batch, 'src1', self.data_type)
+                src2 = inputters.make_features(batch, 'src2', self.data_type)
                 if self.data_type == 'text':
-                    _, src_lengths = batch.src
+                    _, src_lengths = batch.src1
                 elif self.data_type == 'audio':
                     src_lengths = batch.src_lengths
                 else:
@@ -232,11 +215,10 @@ class Trainer(object):
                 tgt = inputters.make_features(batch, 'tgt')
 
                 # F-prop through the model.
-                outputs, attns = self.model(src, tgt, src_lengths)
+                outputs, attns = self.model(src1, src2, tgt, src_lengths)
 
                 # Compute loss.
-                batch_stats = self.valid_loss.monolithic_compute_loss(
-                    batch, outputs, attns)
+                batch_stats = self.valid_loss.monolithic_compute_loss(batch, outputs, attns)
 
                 # Update statistics.
                 stats.update(batch_stats)
@@ -246,8 +228,7 @@ class Trainer(object):
 
         return stats
 
-    def _gradient_accumulation(self, true_batchs, normalization, total_stats,
-                               report_stats):
+    def _gradient_accumulation(self, true_batchs, normalization, total_stats, report_stats):
         if self.grad_accum_count > 1:
             self.model.zero_grad()
 
@@ -260,9 +241,10 @@ class Trainer(object):
                 trunc_size = target_size
 
             # dec_state = None
-            src = inputters.make_features(batch, 'src', self.data_type)
+            src1 = inputters.make_features(batch, 'src1', self.data_type)
+            src2 = inputters.make_features(batch, 'src2', self.data_type)
             if self.data_type == 'text':
-                _, src_lengths = batch.src
+                _, src_lengths = batch.src1
                 report_stats.n_src_words += src_lengths.sum().item()
             elif self.data_type == 'audio':
                 src_lengths = batch.src_lengths
@@ -278,13 +260,11 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
-                outputs, attns = \
-                    self.model(src, tgt, src_lengths)
+                outputs, attns = self.model(src1, src2, tgt, src_lengths)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
-                    batch, outputs, attns, j,
-                    trunc_size, self.shard_size, normalization)
+                    batch, outputs, attns, j, trunc_size, self.shard_size, normalization)
                 total_stats.update(batch_stats)
                 report_stats.update(batch_stats)
 
@@ -292,11 +272,8 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     # Multi GPU gradient gather
                     if self.n_gpu > 1:
-                        grads = [p.grad.data for p in self.model.parameters()
-                                 if p.requires_grad
-                                 and p.grad is not None]
-                        onmt.utils.distributed.all_reduce_and_rescale_tensors(
-                            grads, float(1))
+                        grads = [p.grad.data for p in self.model.parameters() if p.requires_grad and p.grad is not None]
+                        onmt.utils.distributed.all_reduce_and_rescale_tensors(grads, float(1))
                     self.optim.step()
 
                 # If truncated, don't backprop fully.
@@ -310,11 +287,8 @@ class Trainer(object):
         # update only after accum batches
         if self.grad_accum_count > 1:
             if self.n_gpu > 1:
-                grads = [p.grad.data for p in self.model.parameters()
-                         if p.requires_grad
-                         and p.grad is not None]
-                onmt.utils.distributed.all_reduce_and_rescale_tensors(
-                    grads, float(1))
+                grads = [p.grad.data for p in self.model.parameters() if p.requires_grad and p.grad is not None]
+                onmt.utils.distributed.all_reduce_and_rescale_tensors(grads, float(1))
             self.optim.step()
 
     def _start_report_manager(self, start_time=None):
@@ -342,27 +316,23 @@ class Trainer(object):
             return onmt.utils.Statistics.all_gather_stats(stat)
         return stat
 
-    def _maybe_report_training(self, step, num_steps, learning_rate,
-                               report_stats):
+    def _maybe_report_training(self, step, num_steps, learning_rate, report_stats):
         """
         Simple function to report training stats (if report_manager is set)
         see `onmt.utils.ReportManagerBase.report_training` for doc
         """
         if self.report_manager is not None:
             return self.report_manager.report_training(
-                step, num_steps, learning_rate, report_stats,
-                multigpu=self.n_gpu > 1)
+                step, num_steps, learning_rate, report_stats, multigpu=self.n_gpu > 1)
 
-    def _report_step(self, learning_rate, step, train_stats=None,
-                     valid_stats=None):
+    def _report_step(self, learning_rate, step, train_stats=None, valid_stats=None):
         """
         Simple function to report stats (if report_manager is set)
         see `onmt.utils.ReportManagerBase.report_step` for doc
         """
         if self.report_manager is not None:
             return self.report_manager.report_step(
-                learning_rate, step, train_stats=train_stats,
-                valid_stats=valid_stats)
+                learning_rate, step, train_stats=train_stats, valid_stats=valid_stats)
 
     def _maybe_save(self, step):
         """

@@ -25,7 +25,7 @@ from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 
 
-def build_embeddings(opt, word_field, feat_fields, for_encoder=True):
+def build_embeddings(opt, word_field, feat_fields, target):
     """
     Args:
         opt: the option in current environment.
@@ -33,7 +33,12 @@ def build_embeddings(opt, word_field, feat_fields, for_encoder=True):
         feature_dicts([Vocab], optional): a list of feature dictionary.
         for_encoder(bool): build Embeddings for encoder or decoder?
     """
-    emb_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
+    if target == 'src1':
+        emb_dim = opt.src1_word_vec_size
+    elif target == 'src2':
+        emb_dim = opt.src2_word_vec_size
+    else:
+        emb_dim = opt.tgt_word_vec_size
 
     word_padding_idx = word_field.vocab.stoi[word_field.pad_token]
     num_word_embeddings = len(word_field.vocab)
@@ -147,10 +152,10 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
     # Build encoder.
     if model_opt.model_type == "text":
         src1_fields = [f for n, f in fields['src1']]
-        src1_emb = build_embeddings(model_opt, src1_fields[0], src1_fields[1:])
+        src1_emb = build_embeddings(model_opt, src1_fields[0], src1_fields[1:], 'src1')
         encoder1 = build_encoder(model_opt, src1_emb, 'src1')
         src2_fields = [f for n, f in fields['src2']]
-        src2_emb = build_embeddings(model_opt, src2_fields[0], src2_fields[1:])
+        src2_emb = build_embeddings(model_opt, src2_fields[0], src2_fields[1:], 'src2')
         encoder2 = build_encoder(model_opt, src2_emb, 'src2')
     elif model_opt.model_type == "img":
         # why is build_encoder not used here?
@@ -176,7 +181,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
     # Build decoder.
     tgt_fields = [f for n, f in fields['tgt']]
-    tgt_emb = build_embeddings(model_opt, tgt_fields[0], tgt_fields[1:], for_encoder=False)
+    tgt_emb = build_embeddings(model_opt, tgt_fields[0], tgt_fields[1:], 'tgt')
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
