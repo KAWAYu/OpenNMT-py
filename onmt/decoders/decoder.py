@@ -311,7 +311,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             rnn_output, dec_state = self.rnn(decoder_input, dec_state)
             decoder_output, p1_attn, p2_attn = self.attn(
                 rnn_output, memory_bank1.transpose(0, 1), memory_bank2.transpose(0, 1),
-                memory1_lengths=memory1_lengths, memory2_length=memory2_length)
+                memory1_lengths=memory1_lengths, memory2_lengths=memory2_length)
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
