@@ -206,16 +206,19 @@ class Trainer(object):
                 src1 = inputters.make_features(batch, 'src1', self.data_type)
                 src2 = inputters.make_features(batch, 'src2', self.data_type)
                 if self.data_type == 'text':
-                    _, src_lengths = batch.src1
+                    _, src_lengths1 = batch.src1
+                    _, src_lengths2 = batch.src2
                 elif self.data_type == 'audio':
-                    src_lengths = batch.src_lengths
+                    src_lengths1 = batch.src_lengths1
+                    src_lengths2 = batch.src_lengths2
                 else:
-                    src_lengths = None
+                    src_lengths1 = None
+                    src_lengths2 = None
 
                 tgt = inputters.make_features(batch, 'tgt')
 
                 # F-prop through the model.
-                outputs, attns = self.model(src1, src2, tgt, src_lengths)
+                outputs, attns = self.model(src1, src2, tgt, src_lengths1, src_lengths2)
 
                 # Compute loss.
                 batch_stats = self.valid_loss.monolithic_compute_loss(batch, outputs, attns)
@@ -244,12 +247,15 @@ class Trainer(object):
             src1 = inputters.make_features(batch, 'src1', self.data_type)
             src2 = inputters.make_features(batch, 'src2', self.data_type)
             if self.data_type == 'text':
-                _, src_lengths = batch.src1
-                report_stats.n_src_words += src_lengths.sum().item()
+                _, src_lengths1 = batch.src1
+                _, src_lengths2 = batch.src2
+                report_stats.n_src_words += src_lengths1.sum().item()
             elif self.data_type == 'audio':
-                src_lengths = batch.src_lengths
+                src_lengths1 = batch.src_lengths1
+                src_lengths2 = batch.src_lengths2
             else:
-                src_lengths = None
+                src_lengths1 = None
+                src_lengths2 = None
 
             tgt_outer = inputters.make_features(batch, 'tgt')
 
@@ -260,7 +266,7 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
-                outputs, attns = self.model(src1, src2, tgt, src_lengths)
+                outputs, attns = self.model(src1, src2, tgt, src_lengths1, src_lengths2)
 
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
