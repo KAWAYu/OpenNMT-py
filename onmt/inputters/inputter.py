@@ -209,7 +209,7 @@ def make_features(batch, side, data_type='text'):
         A sequence of src/tgt tensors with optional feature tensors
         of size (len x batch).
     """
-    assert side in ['src', 'tgt']
+    assert side in ['src1', 'src2', 'tgt']
     if isinstance(batch.__dict__[side], tuple):
         data = batch.__dict__[side][0]
     else:
@@ -435,8 +435,7 @@ class OrderedIterator(torchtext.data.Iterator):
             self.batches = _pool(self.data(), self.random_shuffler)
         else:
             self.batches = []
-            for b in torchtext.data.batch(self.data(), self.batch_size,
-                                          self.batch_size_fn):
+            for b in torchtext.data.batch(self.data(), self.batch_size, self.batch_size_fn):
                 self.batches.append(sorted(b, key=self.sort_key))
 
 
@@ -450,8 +449,7 @@ class DatasetLazyIter(object):
     is_train (bool): train or valid?
     """
 
-    def __init__(self, dataset_paths, fields, batch_size, batch_size_fn,
-                 device, is_train):
+    def __init__(self, dataset_paths, fields, batch_size, batch_size_fn, device, is_train):
         self._paths = dataset_paths
         self.fields = fields
         self.batch_size = batch_size
@@ -463,8 +461,7 @@ class DatasetLazyIter(object):
         paths = cycle(self._paths) if self.is_train else self._paths
         for path in paths:
             cur_dataset = torch.load(path)
-            logger.info('Loading dataset from %s, number of examples: %d' %
-                        (path, len(cur_dataset)))
+            logger.info('Loading dataset from %s, number of examples: %d' % (path, len(cur_dataset)))
             cur_dataset.fields = self.fields
             cur_iter = OrderedIterator(
                 dataset=cur_dataset,
@@ -518,5 +515,4 @@ def build_dataset_iter(corpus_type, fields, opt, is_train=True):
 
     device = "cuda" if opt.gpu_ranks else "cpu"
 
-    return DatasetLazyIter(dataset_paths, fields, batch_size, batch_fn,
-                           device, is_train)
+    return DatasetLazyIter(dataset_paths, fields, batch_size, batch_fn, device, is_train)
