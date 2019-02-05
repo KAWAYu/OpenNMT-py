@@ -147,7 +147,7 @@ class LossComputeBase(nn.Module):
         Returns:
             :obj:`onmt.utils.Statistics`: loss statistics
         """
-        range_ = (0, batch.tgt1.size(0) if target == 'tgt1' else batch.target2.size(0))
+        range_ = (0, batch.tgt1.size(0) if target == 'tgt1' else batch.tgt2.size(0))
         shard_state = self._make_shard_state(batch, output, range_, attns, target=target)
         _, batch_stats = self._compute_loss(batch, **shard_state)
 
