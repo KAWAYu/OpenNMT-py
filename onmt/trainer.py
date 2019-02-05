@@ -100,6 +100,8 @@ class Trainer(object):
         self.gpu_verbose_level = gpu_verbose_level
         self.report_manager = report_manager
         self.model_saver = model_saver
+        self.prev_loss1_loss = 1e-6
+        self.prev_loss2_loss = 1e-6
 
         assert grad_accum_count > 0
         if grad_accum_count > 1:
@@ -270,10 +272,12 @@ class Trainer(object):
                 outputs1, attns1, outputs2, attns2 = self.model(src, tgt1, tgt2, src_lengths)
 
                 # 3. Compute loss in shards for memory efficiency.
+                normalization1 = normalization / self.prev_loss1_loss * (self.prev_loss1_loss + self.prev_loss2_loss)
+                normalization2 = normalization / self.prev_loss2_loss * (self.prev_loss1_loss + self.prev_loss2_loss)
                 batch_stats1 = self.train1_loss.sharded_compute_loss(
-                    batch, outputs1, attns1, j, trunc_size1, self.shard_size, normalization, target='tgt1')
+                    batch, outputs1, attns1, j, trunc_size1, self.shard_size, normalization1, target='tgt1')
                 batch_stats2 = self.train2_loss.sharded_compute_loss(
-                    batch, outputs2, attns2, j, trunc_size2, self.shard_size, normalization, target='tgt2')
+                    batch, outputs2, attns2, j, trunc_size2, self.shard_size, normalization2, target='tgt2')
                 total_stats.update(batch_stats1)
                 report_stats.update(batch_stats1)
 
@@ -284,6 +288,8 @@ class Trainer(object):
                         grads = [p.grad.data for p in self.model.parameters() if p.requires_grad and p.grad is not None]
                         onmt.utils.distributed.all_reduce_and_rescale_tensors(grads, float(1))
                     self.optim.step()
+                    self.prev_loss1_loss = batch_stats1.loss
+                    self.prev_loss2_loss = batch_stats2.loss
 
                 # If truncated, don't backprop fully.
                 # TO CHECK
@@ -294,6 +300,7 @@ class Trainer(object):
                 if self.model.decoder2.state is not None:
                     self.model.decoder2.detach_state()
 
+
         # in case of multi step gradient accumulation,
         # update only after accum batches
         if self.grad_accum_count > 1:
@@ -301,6 +308,7 @@ class Trainer(object):
                 grads = [p.grad.data for p in self.model.parameters() if p.requires_grad and p.grad is not None]
                 onmt.utils.distributed.all_reduce_and_rescale_tensors(grads, float(1))
             self.optim.step()
+
 
     def _start_report_manager(self, start_time=None):
         """
