@@ -449,7 +449,7 @@ class Translator(object):
 
         # Generator forward.
         if not self.copy_attn:
-            attn = dec_attn["std"]
+            attn = dec_attn["std1"]
             log_probs = self.model.generator(dec_out.squeeze(0))
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
