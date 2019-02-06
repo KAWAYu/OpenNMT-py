@@ -63,7 +63,7 @@ class TranslationBuilder(object):
         inds, perm = torch.sort(batch.indices)
         data_type = self.data.data_type
         if data_type == 'text':
-            src = batch.src[0].index_select(1, perm)
+            src = batch.src1[0].index_select(1, perm)
         else:
             src = None
         tgt = batch.tgt.index_select(1, perm) if self.has_tgt else None
