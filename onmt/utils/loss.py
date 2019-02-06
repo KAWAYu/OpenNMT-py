@@ -133,9 +133,7 @@ class LossComputeBase(nn.Module):
 
         return batch_stats
 
-    def sharded_compute_loss(self, batch, output, attns,
-                             cur_trunc, trunc_size, shard_size,
-                             normalization):
+    def sharded_compute_loss(self, batch, output, attns, cur_trunc, trunc_size, shard_size, normalization):
         """Compute the forward loss and backpropagate.  Computation is done
         with shards and optionally truncation for memory efficiency.
 
@@ -294,8 +292,7 @@ def shards(state, shard_size, eval_only=False):
         # want a sequence of dictionaries of tensors.
         # First, unzip the dictionary into a sequence of keys and a
         # sequence of tensor-like sequences.
-        keys, values = zip(*((k, [v_chunk for v_chunk in v_split])
-                             for k, (_, v_split) in non_none.items()))
+        keys, values = zip(*((k, [v_chunk for v_chunk in v_split]) for k, (_, v_split) in non_none.items()))
 
         # Now, yield a dictionary for each shard. The keys are always
         # the same. values is a sequence of length #keys where each
@@ -310,7 +307,6 @@ def shards(state, shard_size, eval_only=False):
         variables = []
         for k, (v, v_split) in non_none.items():
             if isinstance(v, torch.Tensor) and state[k].requires_grad:
-                variables.extend(zip(torch.split(state[k], shard_size),
-                                     [v_chunk.grad for v_chunk in v_split]))
+                variables.extend(zip(torch.split(state[k], shard_size), [v_chunk.grad for v_chunk in v_split]))
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads)

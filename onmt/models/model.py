@@ -50,6 +50,6 @@ class NMTModel(nn.Module):
         enc2_state, memory_bank2, lengths2 = self.encoder2(src2, lengths2)
         self.decoder.init_state(src1, src2, memory_bank1, memory_bank2, enc1_state, enc2_state)
         dec_out, attns = self.decoder(
-            tgt, memory_bank1, memory_bank2, memory1_lengths=lengths1, memory2_length=lengths2)
+            tgt, memory_bank1, memory_bank2, memory1_lengths=lengths1, memory2_lengths=lengths2)
 
         return dec_out, attns

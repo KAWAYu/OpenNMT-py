@@ -124,7 +124,7 @@ class RNNDecoderBase(nn.Module):
         self.state["hidden"] = tuple([_.detach() for _ in self.state["hidden"]])
         self.state["input_feed"] = self.state["input_feed"].detach()
 
-    def forward(self, tgt, memory_bank1, memory_bank2, memory1_lengths=None, memory2_length=None, step=None):
+    def forward(self, tgt, memory_bank1, memory_bank2, memory1_lengths=None, memory2_lengths=None, step=None):
         """
         Args:
             tgt (`LongTensor`): sequences of padded tokens
@@ -142,7 +142,7 @@ class RNNDecoderBase(nn.Module):
         """
         # Run the forward pass of the RNN.
         dec_state, dec_outs, attns = self._run_forward_pass(
-            tgt, memory_bank1, memory_bank2, memory1_lengths=memory1_lengths, memory2_length=memory2_length)
+            tgt, memory_bank1, memory_bank2, memory1_lengths=memory1_lengths, memory2_lengths=memory2_lengths)
 
         # Update the state with the result.
         if not isinstance(dec_state, tuple):
@@ -277,7 +277,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
           G --> H
     """
 
-    def _run_forward_pass(self, tgt, memory_bank1, memory_bank2,  memory1_lengths=None, memory2_length=None):
+    def _run_forward_pass(self, tgt, memory_bank1, memory_bank2,  memory1_lengths=None, memory2_lengths=None):
         """
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
@@ -311,7 +311,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             rnn_output, dec_state = self.rnn(decoder_input, dec_state)
             decoder_output, p1_attn, p2_attn = self.attn(
                 rnn_output, memory_bank1.transpose(0, 1), memory_bank2.transpose(0, 1),
-                memory1_lengths=memory1_lengths, memory2_lengths=memory2_length)
+                memory1_lengths=memory1_lengths, memory2_lengths=memory2_lengths)
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
