@@ -71,8 +71,8 @@ class TranslationBuilder(object):
         translations = []
         for b in range(batch_size):
             if data_type == 'text':
-                src_vocab = self.data.src_vocabs[inds[b]] if self.data.src_vocabs else None
-                src_raw = self.data.examples[inds[b]].src
+                src_vocab = self.data.src1_vocabs[inds[b]] if self.data.src1_vocabs else None
+                src_raw = self.data.examples[inds[b]].src1
             else:
                 src_vocab = None
                 src_raw = None
