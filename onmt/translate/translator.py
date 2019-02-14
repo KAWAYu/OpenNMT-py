@@ -119,7 +119,7 @@ class Translator(object):
                 "scores": [],
                 "log_probs": []}
 
-    def translate(self, src, tgt=None, src_dir=None, batch_size=None, attn_debug=False):
+    def translate(self, src1, src2, tgt=None, src_dir=None, batch_size=None, attn_debug=False):
         """
         Translate content of `src_data_iter` (if not None) or `src_path`
         and get gold scores if one of `tgt_data_iter` or `tgt_path` is set.
@@ -142,7 +142,7 @@ class Translator(object):
             * all_predictions is a list of `batch_size` lists
                 of `n_best` predictions
         """
-        assert src is not None
+        assert src1 is not None or src2 is not None
 
         if batch_size is None:
             raise ValueError("batch_size must be set")
@@ -150,8 +150,8 @@ class Translator(object):
         data = inputters.build_dataset(
             self.fields,
             self.data_type,
-            src1=src,
-            src2=src,
+            src1=src1,
+            src2=src2,
             tgt=tgt,
             src_dir=src_dir,
             sample_rate=self.sample_rate,
@@ -431,7 +431,8 @@ class Translator(object):
         return src1, enc_states1, memory_bank1, src1_lengths, src2, enc_states2, memory_bank2, src2_lengths
 
     def _decode_and_generate(
-        self, decoder_in, memory_bank, batch, data, memory_lengths, src_map=None, step=None, batch_offset=None):
+        self, decoder_in, memory_bank1, memory_bank2, batch, data, memory_lengths1, memory_lengths2,
+            src_map=None, step=None, batch_offset=None):
 
         tgt_field = self.fields["tgt"][0][1]
         unk_idx = tgt_field.vocab.stoi[tgt_field.unk_token]
@@ -444,8 +445,8 @@ class Translator(object):
         # in case of inference tgt_len = 1, batch = beam times batch_size
         # in case of Gold Scoring tgt_len = actual length, batch = 1 batch
         dec_out, dec_attn = self.model.decoder(
-            decoder_in, memory_bank, memory_bank,
-            memory1_lengths=memory_lengths, memory2_lengths=memory_lengths, step=step)
+            decoder_in, memory_bank1, memory_bank2,
+            memory1_lengths=memory_lengths1, memory2_lengths=memory_lengths2, step=step)
 
         # Generator forward.
         if not self.copy_attn:
@@ -692,7 +693,7 @@ class Translator(object):
         if "tgt" in batch.__dict__:
             results["gold_score"] = self._score_target(batch, memory_bank1, src1_lengths, data, batch.src_map
                                                        if data_type == 'text' and self.copy_attn else None)
-            self.model.decoder.init_state(src1, memory_bank1, enc_states1)
+            self.model.decoder.init_state(src1, src2, memory_bank1, memory_bank2, enc_states1, enc_states2)
         else:
             results["gold_score"] = [0] * batch_size
 
@@ -712,8 +713,6 @@ class Translator(object):
         memory_lengths1 = tile(src1_lengths, beam_size)
         memory_lengths2 = tile(src2_lengths, beam_size)
 
-        # TODO: ここから先のsrcを変える
-
         # (3) run the decoder to generate sentences, using beam search.
         for i in range(self.max_length):
             if all((b.done() for b in beam)):
@@ -727,7 +726,8 @@ class Translator(object):
 
             # (b) Decode and forward
             out, beam_attn = self._decode_and_generate(
-                inp, memory_bank1, batch, data, memory_lengths=memory_lengths1, src_map=src_map, step=i)
+                inp, memory_bank1, memory_bank2, batch, data, memory_lengths1=memory_lengths1,
+                memory_lengths2=memory_lengths2, src_map=src_map, step=i)
             out = out.view(batch_size, beam_size, -1)
             beam_attn = beam_attn.view(batch_size, beam_size, -1)
 

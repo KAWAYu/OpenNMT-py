@@ -63,31 +63,37 @@ class TranslationBuilder(object):
         inds, perm = torch.sort(batch.indices)
         data_type = self.data.data_type
         if data_type == 'text':
-            src = batch.src1[0].index_select(1, perm)
+            src1 = batch.src1[0].index_select(1, perm)
+            src2 = batch.src2[0].index_select(1, perm)
         else:
-            src = None
+            src1 = None
+            src2 = None
         tgt = batch.tgt.index_select(1, perm) if self.has_tgt else None
 
         translations = []
         for b in range(batch_size):
             if data_type == 'text':
-                src_vocab = self.data.src1_vocabs[inds[b]] if self.data.src1_vocabs else None
-                src_raw = self.data.examples[inds[b]].src1
+                src1_vocab = self.data.src1_vocabs[inds[b]] if self.data.src1_vocabs else None
+                src2_vocab = self.data.src2_vocabs[inds[b]] if self.data.src1_vocabs else None
+                src1_raw = self.data.examples[inds[b]].src1
+                src2_raw = self.data.examples[inds[b]].src2
             else:
-                src_vocab = None
-                src_raw = None
+                src1_vocab = None
+                src2_vocab = None
+                src1_raw = None
+                src2_raw = None
             pred_sents = [self._build_target_tokens(
-                src[:, b] if src is not None else None, src_vocab, src_raw, preds[b][n], attn[b][n])
+                src1[:, b] if src1 is not None else None, src1_vocab, src1_raw, preds[b][n], attn[b][n])
                 for n in range(self.n_best)]
             gold_sent = None
             if tgt is not None:
                 gold_sent = self._build_target_tokens(
-                    src[:, b] if src is not None else None, src_vocab, src_raw,
+                    src1[:, b] if src1 is not None else None, src1_vocab, src1_raw,
                     tgt[1:, b] if tgt is not None else None, None)
 
             translation = Translation(
-                src[:, b] if src is not None else None,
-                src_raw, pred_sents, attn[b], pred_score[b], gold_sent, gold_score[b]
+                src1[:, b] if src1 is not None else None,
+                src1_raw, pred_sents, attn[b], pred_score[b], gold_sent, gold_score[b]
             )
             translations.append(translation)
 

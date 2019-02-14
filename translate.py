@@ -13,7 +13,8 @@ import onmt.opts as opts
 def main(opt):
     translator = build_translator(opt, report_score=True)
     translator.translate(
-        src=opt.src,
+        src1=opt.src1,
+        src2=opt.src2,
         tgt=opt.tgt,
         src_dir=opt.src_dir,
         batch_size=opt.batch_size,

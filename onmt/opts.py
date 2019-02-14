@@ -365,7 +365,8 @@ def translate_opts(parser):
     group = parser.add_argument_group('Data')
     group.add('--data_type', '-data_type', default="text", help="Type of the source input. Options: [text|img].")
 
-    group.add('--src', '-src', required=True, help="""Source sequence to decode (one line per sequence)""")
+    group.add('--src1', '-src1', required=True, help="""Source sequence to decode (one line per sequence)""")
+    group.add('--src2', '-src2', required=True, help="""Source sequence to decode (one line per sequence)""")
     group.add('--src_dir', '-src_dir', default="", help='Source directory for image or audio files')
     group.add('--tgt', '-tgt', help='True target sequence (optional)')
     group.add('--output', '-output', default='pred.txt',
