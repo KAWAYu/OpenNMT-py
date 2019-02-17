@@ -272,7 +272,7 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
                 outputs1, attns1, outputs2, attns2 = self.model(src, tgt1, tgt2, src_lengths)
-                assert onmt.utils.misc.aeq(attns1, attns2), 'attentions are different'
+                # assert onmt.utils.misc.aeq(attns1, attns2), 'attentions are different'
 
                 # 3. Compute loss in shards for memory efficiency.
                 if self.optim_weight_loss:
