@@ -117,6 +117,8 @@ def model_opts(parser):
     group.add('--coverage_attn', '-coverage_attn', action="store_true", help='Train a coverage attention layer.')
     group.add('--lambda_coverage', '-lambda_coverage', type=float, default=1, help='Lambda value for coverage.')
 
+    group.add('--shared_attn', '-shared_attn', action='store_true')
+
 
 def preprocess_opts(parser):
     """ Pre-procesing options """
@@ -324,6 +326,7 @@ def train_opts(parser):
               choices=['noam', 'none'], help="Use a custom decay rate.")
     group.add('--warmup_steps', '-warmup_steps', type=int, default=4000,
               help="""Number of warmup steps for custom decay.""")
+    group.add('--optim_weight_loss', '-optim_weight_loss', action='store_true')
 
     group = parser.add_argument_group('Logging')
     group.add('--report_every', '-report_every', type=int, default=50, help="Print stats at this interval.")

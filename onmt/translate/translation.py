@@ -29,8 +29,7 @@ class TranslationBuilder(object):
         self.has_tgt = has_tgt
 
     def _build_target_tokens(self, src, src_vocab, src_raw, pred, attn):
-        tgt_field = self.fields["tgt2" \
-                                ""][0][1]
+        tgt_field = self.fields["tgt2"][0][1]
         vocab = tgt_field.vocab
         tokens = []
         for tok in pred:

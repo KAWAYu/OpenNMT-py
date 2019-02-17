@@ -50,7 +50,8 @@ def build_trainer(opt, device_id, model, fields, optim, data_type, model_saver=N
     report_manager = onmt.utils.build_report_manager(opt)
     trainer = onmt.Trainer(model, train1_loss, train2_loss, valid1_loss, valid2_loss, optim, trunc_size,
                            shard_size, data_type, norm_method, grad_accum_count, n_gpu, gpu_rank,
-                           gpu_verbose_level, report_manager, model_saver=model_saver)
+                           gpu_verbose_level, report_manager, model_saver=model_saver,
+                           optim_weight_loss=opt.optim_weight_loss)
     return trainer
 
 
@@ -82,7 +83,7 @@ class Trainer(object):
     def __init__(self, model, train1_loss, train2_loss, valid1_loss, valid2_loss, optim,
                  trunc_size=0, shard_size=32, data_type='text',
                  norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
-                 gpu_verbose_level=0, report_manager=None, model_saver=None):
+                 gpu_verbose_level=0, report_manager=None, model_saver=None, optim_weight_loss=True):
         # Basic attributes.
         self.model = model
         self.train1_loss = train1_loss
@@ -102,6 +103,7 @@ class Trainer(object):
         self.model_saver = model_saver
         self.prev_loss1_loss = 1e-6
         self.prev_loss2_loss = 1e-6
+        self.optim_weight_loss = optim_weight_loss
 
         assert grad_accum_count > 0
         if grad_accum_count > 1:
@@ -270,10 +272,17 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
                 outputs1, attns1, outputs2, attns2 = self.model(src, tgt1, tgt2, src_lengths)
+                assert onmt.utils.misc.aeq(attns1, attns2), 'attentions are different'
 
                 # 3. Compute loss in shards for memory efficiency.
-                normalization1 = normalization / self.prev_loss1_loss * (self.prev_loss1_loss + self.prev_loss2_loss)
-                normalization2 = normalization / self.prev_loss2_loss * (self.prev_loss1_loss + self.prev_loss2_loss)
+                if self.optim_weight_loss:
+                    normalization1 = \
+                        normalization / self.prev_loss1_loss * (self.prev_loss1_loss + self.prev_loss2_loss)
+                    normalization2 = \
+                        normalization / self.prev_loss2_loss * (self.prev_loss1_loss + self.prev_loss2_loss)
+                else:
+                    normalization1 = normalization
+                    normalization2 = normalization
                 batch_stats1 = self.train1_loss.sharded_compute_loss(
                     batch, outputs1, attns1, j, trunc_size1, self.shard_size, normalization1, target='tgt1')
                 batch_stats2 = self.train2_loss.sharded_compute_loss(

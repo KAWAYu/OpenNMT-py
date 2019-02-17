@@ -19,6 +19,7 @@ from onmt.encoders.image_encoder import ImageEncoder
 from onmt.decoders.decoder import InputFeedRNNDecoder, StdRNNDecoder
 from onmt.decoders.transformer import TransformerDecoder
 from onmt.decoders.cnn_decoder import CNNDecoder
+from onmt.decoders.shared_attn_decoder import SharedAttentionDecoder
 
 from onmt.modules import Embeddings, CopyGenerator
 from onmt.utils.misc import use_gpu
@@ -95,12 +96,14 @@ def build_encoder(opt, embeddings):
     return encoder
 
 
-def build_decoder(opt, embeddings, dec_num):
+def build_decoder(opt, embeddings, dec_num, shared_attn):
     """
     Various decoder dispatcher function.
     Args:
         opt: the option in current environment.
         embeddings (Embeddings): vocab embeddings for this decoder.
+        dec_num: decoder number (for multi-target)
+        shared_attn: shared_attention (if None, create attention module in self)
     """
     if opt.decoder_type == "transformer":
         decoder = TransformerDecoder(
@@ -125,45 +128,82 @@ def build_decoder(opt, embeddings, dec_num):
             embeddings
         )
     else:
-        dec_class = InputFeedRNNDecoder if opt.input_feed else StdRNNDecoder
-        if dec_num == 1:
-            decoder = dec_class(
-                opt.rnn_type,
-                opt.brnn,
-                opt.dec1_layers,
-                opt.dec1_rnn_size,
-                opt.global_attention,
-                opt.global_attention_function,
-                opt.coverage_attn,
-                opt.context_gate,
-                opt.copy_attn,
-                opt.dropout,
-                embeddings,
-                opt.reuse_copy_attn
-            )
-        elif dec_num == 2:
-            decoder = dec_class(
-                opt.rnn_type,
-                opt.brnn,
-                opt.dec2_layers,
-                opt.dec2_rnn_size,
-                opt.global_attention,
-                opt.global_attention_function,
-                opt.coverage_attn,
-                opt.context_gate,
-                opt.copy_attn,
-                opt.dropout,
-                embeddings,
-                opt.reuse_copy_attn
-            )
+        if opt.shared_attn:
+            if dec_num == 1:
+                decoder = SharedAttentionDecoder(
+                    opt.rnn_type,
+                    opt.brnn,
+                    opt.dec1_layers,
+                    opt.dec1_rnn_size,
+                    opt.global_attention,
+                    opt.global_attention_function,
+                    opt.coverage_attn,
+                    opt.context_gate,
+                    shared_attn,
+                    opt.copy_attn,
+                    opt.dropout,
+                    embeddings,
+                    opt.reuse_copy_attn
+                )
+            elif dec_num == 2:
+                decoder = SharedAttentionDecoder(
+                    opt.rnn_type,
+                    opt.brnn,
+                    opt.dec2_layers,
+                    opt.dec2_rnn_size,
+                    opt.global_attention,
+                    opt.global_attention_function,
+                    opt.coverage_attn,
+                    opt.context_gate,
+                    shared_attn,
+                    opt.copy_attn,
+                    opt.dropout,
+                    embeddings,
+                    opt.reuse_copy_attn
+                )
+        elif opt.input_feed:
+            dec_class = InputFeedRNNDecoder
+        else:
+            dec_class = StdRNNDecoder
+
+        if not opt.shared_attn:
+            if dec_num == 1:
+                decoder = dec_class(
+                    opt.rnn_type,
+                    opt.brnn,
+                    opt.dec1_layers,
+                    opt.dec1_rnn_size,
+                    opt.global_attention,
+                    opt.global_attention_function,
+                    opt.coverage_attn,
+                    opt.context_gate,
+                    opt.copy_attn,
+                    opt.dropout,
+                    embeddings,
+                    opt.reuse_copy_attn
+                )
+            elif dec_num == 2:
+                decoder = dec_class(
+                    opt.rnn_type,
+                    opt.brnn,
+                    opt.dec2_layers,
+                    opt.dec2_rnn_size,
+                    opt.global_attention,
+                    opt.global_attention_function,
+                    opt.coverage_attn,
+                    opt.context_gate,
+                    opt.copy_attn,
+                    opt.dropout,
+                    embeddings,
+                    opt.reuse_copy_attn
+                )
     return decoder
 
 
 def load_test_model(opt, dummy_opt, model_path=None):
     if model_path is None:
         model_path = opt.models[0]
-    checkpoint = torch.load(model_path,
-                            map_location=lambda storage, loc: storage)
+    checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
 
     vocab = checkpoint['vocab']
     if inputters.old_style_vocab(vocab):
@@ -237,11 +277,9 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
     # Build decoder.
     tgt1_fields = [f for n, f in fields['tgt1']]
-    tgt1_emb = build_embeddings(
-        model_opt, tgt1_fields[0], tgt1_fields[1:], for_encoder=False)
+    tgt1_emb = build_embeddings(model_opt, tgt1_fields[0], tgt1_fields[1:], for_encoder=False)
     tgt2_fields = [f for n, f in fields['tgt2']]
-    tgt2_emb = build_embeddings(
-        model_opt, tgt2_fields[0], tgt2_fields[1:], for_encoder=False)
+    tgt2_emb = build_embeddings(model_opt, tgt2_fields[0], tgt2_fields[1:], for_encoder=False)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
@@ -251,8 +289,11 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
         tgt1_emb.word_lut.weight = src_emb.word_lut.weight
 
-    decoder1 = build_decoder(model_opt, tgt1_emb, dec_num=1)
-    decoder2 = build_decoder(model_opt, tgt2_emb, dec_num=2)
+    shared_attn = onmt.modules.GlobalAttention(
+        model_opt.dec1_rnn_size, attn_type=model_opt.global_attention, attn_func=model_opt.global_attention_function)
+
+    decoder1 = build_decoder(model_opt, tgt1_emb, dec_num=1, shared_attn=shared_attn)
+    decoder2 = build_decoder(model_opt, tgt2_emb, dec_num=2, shared_attn=shared_attn)
 
     # Build NMTModel(= encoder + decoder).
     device = torch.device("cuda" if gpu else "cpu")
@@ -267,14 +308,12 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
             gen1_func = nn.LogSoftmax(dim=-1)
             gen2_func = nn.LogSoftmax(dim=-1)
         generator1 = nn.Sequential(
-            nn.Linear(model_opt.dec1_rnn_size, len(fields["tgt1"][0][1].vocab)),
-            gen1_func
+            nn.Linear(model_opt.dec1_rnn_size, len(fields["tgt1"][0][1].vocab)), gen1_func
         )
         if model_opt.share_decoder_embeddings:
             generator1[0].weight = decoder1.embeddings.word_lut.weight
         generator2 = nn.Sequential(
-            nn.Linear(model_opt.dec2_rnn_size, len(fields["tgt2"][0][1].vocab)),
-            gen2_func
+            nn.Linear(model_opt.dec2_rnn_size, len(fields["tgt2"][0][1].vocab)), gen2_func
         )
         if model_opt.share_decoder_embeddings:
             generator2[0].weight = decoder2.embeddings.word_lut.weight
