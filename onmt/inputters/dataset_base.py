@@ -58,7 +58,7 @@ class DatasetBase(Dataset):
 
     def __reduce_ex__(self, proto):
         # This is a hack. Something is broken with torch pickle.
-        return super(DatasetBase, self).__reduce_ex__()
+        return super(DatasetBase, self).__reduce_ex__(proto)
 
     def __init__(self, fields, src1_examples_iter, src2_examples_iter, tgt_examples_iter, filter_pred=None):
 
