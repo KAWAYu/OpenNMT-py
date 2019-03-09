@@ -51,10 +51,11 @@ class TranslationBuilder(object):
         assert(len(translation_batch["gold_score"]) == len(translation_batch["predictions"]))
         batch_size = batch.batch_size
 
-        preds, pred_score, attn, gold_score, indices = list(zip(
+        preds, pred_score, attn1, attn2, gold_score, indices = list(zip(
             *sorted(zip(translation_batch["predictions"],
                         translation_batch["scores"],
-                        translation_batch["attention"],
+                        translation_batch["attention1"],
+                        translation_batch["attention2"],
                         translation_batch["gold_score"],
                         batch.indices.data),
                     key=lambda x: x[-1])))
@@ -83,7 +84,7 @@ class TranslationBuilder(object):
                 src1_raw = None
                 src2_raw = None
             pred_sents = [self._build_target_tokens(
-                src1[:, b] if src1 is not None else None, src1_vocab, src1_raw, preds[b][n], attn[b][n])
+                src1[:, b] if src1 is not None else None, src1_vocab, src1_raw, preds[b][n], attn1[b][n])
                 for n in range(self.n_best)]
             gold_sent = None
             if tgt is not None:
@@ -93,7 +94,9 @@ class TranslationBuilder(object):
 
             translation = Translation(
                 src1[:, b] if src1 is not None else None,
-                src1_raw, pred_sents, attn[b], pred_score[b], gold_sent, gold_score[b]
+                src1_raw,
+                src2[:, b] if src2 is not None else None,
+                src2_raw, pred_sents, attn1[b], attn2[b], pred_score[b], gold_sent, gold_score[b]
             )
             translations.append(translation)
 
@@ -116,11 +119,14 @@ class Translation(object):
 
     """
 
-    def __init__(self, src, src_raw, pred_sents, attn, pred_scores, tgt_sent, gold_score):
-        self.src = src
-        self.src_raw = src_raw
+    def __init__(self, src1, src1_raw, src2, src2_raw, pred_sents, attn1, attn2, pred_scores, tgt_sent, gold_score):
+        self.src1 = src1
+        self.src1_raw = src1_raw
+        self.src2 = src2
+        self.src2_raw = src2_raw
         self.pred_sents = pred_sents
-        self.attns = attn
+        self.attns1 = attn1
+        self.attns2 = attn2
         self.pred_scores = pred_scores
         self.gold_sent = tgt_sent
         self.gold_score = gold_score
@@ -130,7 +136,7 @@ class Translation(object):
         Log translation.
         """
 
-        output = '\nSENT {}: {}\n'.format(sent_number, self.src_raw)
+        output = '\nSENT {}: {}\n'.format(sent_number, self.src1_raw)
 
         best_pred = self.pred_sents[0]
         best_score = self.pred_scores[0]

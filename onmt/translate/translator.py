@@ -212,20 +212,26 @@ class Translator(object):
                 if attn_debug:
                     preds = trans.pred_sents[0]
                     preds.append('</s>')
-                    attns = trans.attns[0].tolist()
+                    attns1 = trans.attns1[0].tolist()
+                    attns2 = trans.attns2[0].tolist()
                     if self.data_type == 'text':
-                        srcs = trans.src_raw
+                        srcs1 = trans.src1_raw
+                        srcs2 = trans.src2_raw
                     else:
-                        srcs = [str(item) for item in range(len(attns[0]))]
-                    header_format = "{:>10.10} " + "{:>10.7} " * len(srcs)
-                    row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs)
-                    output = header_format.format("", *srcs) + '\n'
-                    for word, row in zip(preds, attns):
-                        max_index = row.index(max(row))
+                        srcs1 = [str(item) for item in range(len(attns1[0]))]
+                        srcs2 = [str(item) for item in range(len(attns2[0]))]
+                    header_format = "{:>10.10} " + "{:>10.7} " * len(srcs1) + "{:>10.7}" * len(srcs2)
+                    row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7}" * len(srcs2)
+                    output = header_format.format("", *srcs1, *srcs2) + '\n'
+                    for word, row1, row2 in zip(preds, attns1, attns2):
+                        if max(row1) > max(row2):
+                            max_index = row1.index(max(row1))
+                        else:
+                            max_index = len(row1) + row2.index(max(row2))
                         row_format = row_format.replace("{:>10.7f} ", "{:*>10.7f} ", max_index + 1)
                         row_format = row_format.replace("{:*>10.7f} ", "{:>10.7f} ", max_index)
-                        output += row_format.format(word, *row) + '\n'
-                        row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs)
+                        output += row_format.format(word, *row1, *row2) + '\n'
+                        row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7}" * len(srcs2)
                     os.write(1, output.encode('utf-8'))
 
         if self.report_score:
@@ -450,7 +456,8 @@ class Translator(object):
 
         # Generator forward.
         if not self.copy_attn:
-            attn = dec_attn["std1"]
+            attn1 = dec_attn["std1"]
+            attn2 = dec_attn["std2"]
             log_probs = self.model.generator(dec_out.squeeze(0))
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
@@ -474,7 +481,7 @@ class Translator(object):
             log_probs = scores.squeeze(0).log()
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
-        return log_probs, attn
+        return log_probs, attn1, attn2
 
     def _fast_translate_batch(self, batch, data, max_length, min_length=0, n_best=1, return_attention=False):
         # TODO: support these blacklisted features.
@@ -688,7 +695,8 @@ class Translator(object):
         results = {}
         results["predictions"] = []
         results["scores"] = []
-        results["attention"] = []
+        results["attention1"] = []
+        results["attention2"] = []
         results["batch"] = batch
         if "tgt" in batch.__dict__:
             results["gold_score"] = self._score_target(batch, memory_bank1, src1_lengths, data, batch.src_map
@@ -725,17 +733,19 @@ class Translator(object):
             inp = inp.view(1, -1, 1)
 
             # (b) Decode and forward
-            out, beam_attn = self._decode_and_generate(
+            out, beam_attn1, beam_attn2 = self._decode_and_generate(
                 inp, memory_bank1, memory_bank2, batch, data, memory_lengths1=memory_lengths1,
                 memory_lengths2=memory_lengths2, src_map=src_map, step=i)
             out = out.view(batch_size, beam_size, -1)
-            beam_attn = beam_attn.view(batch_size, beam_size, -1)
+            beam_attn1 = beam_attn1.view(batch_size, beam_size, -1)
+            beam_attn2 = beam_attn2.view(batch_size, beam_size, -1)
 
             # (c) Advance each beam.
             select_indices_array = []
             # Loop over the batch_size number of beam
             for j, b in enumerate(beam):
-                b.advance(out[j, :], beam_attn.data[j, :, :memory_lengths1[j]])
+                b.advance(
+                    out[j, :], beam_attn1.data[j, :, :memory_lengths1[j]], beam_attn2.data[j, :, :memory_lengths2[j]])
                 select_indices_array.append(b.get_current_origin() + j * beam_size)
             select_indices = torch.cat(select_indices_array)
 
@@ -744,14 +754,16 @@ class Translator(object):
         # (4) Extract sentences from beam.
         for b in beam:
             scores, ks = b.sort_finished(minimum=self.n_best)
-            hyps, attn = [], []
+            hyps, attn1, attn2 = [], [], []
             for i, (times, k) in enumerate(ks[:self.n_best]):
-                hyp, att = b.get_hyp(times, k)
+                hyp, att1, att2 = b.get_hyp(times, k)
                 hyps.append(hyp)
-                attn.append(att)
+                attn1.append(att1)
+                attn2.append(att2)
             results["predictions"].append(hyps)
             results["scores"].append(scores)
-            results["attention"].append(attn)
+            results["attention1"].append(attn1)
+            results["attention2"].append(attn2)
 
         return results
 

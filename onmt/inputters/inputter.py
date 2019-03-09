@@ -426,9 +426,7 @@ class OrderedIterator(torchtext.data.Iterator):
         if self.train:
             def _pool(data, random_shuffler):
                 for p in torchtext.data.batch(data, self.batch_size * 100):
-                    p_batch = torchtext.data.batch(
-                        sorted(p, key=self.sort_key),
-                        self.batch_size, self.batch_size_fn)
+                    p_batch = torchtext.data.batch(sorted(p, key=self.sort_key), self.batch_size, self.batch_size_fn)
                     for b in random_shuffler(list(p_batch)):
                         yield b
 

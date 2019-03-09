@@ -17,13 +17,9 @@ class Beam(object):
        global_scorer (:obj:`GlobalScorer`)
     """
 
-    def __init__(self, size, pad, bos, eos,
-                 n_best=1, cuda=False,
-                 global_scorer=None,
-                 min_length=0,
-                 stepwise_penalty=False,
-                 block_ngram_repeat=0,
-                 exclusion_tokens=set()):
+    def __init__(self, size, pad, bos, eos, n_best=1, cuda=False,
+                 global_scorer=None, min_length=0, stepwise_penalty=False,
+                 block_ngram_repeat=0, exclusion_tokens=set()):
 
         self.size = size
         self.tt = torch.cuda if cuda else torch
@@ -36,8 +32,7 @@ class Beam(object):
         self.prev_ks = []
 
         # The outputs at each time-step.
-        self.next_ys = [self.tt.LongTensor(size)
-                        .fill_(pad)]
+        self.next_ys = [self.tt.LongTensor(size).fill_(pad)]
         self.next_ys[0][0] = bos
 
         # Has EOS topped the beam yet.
@@ -45,7 +40,8 @@ class Beam(object):
         self.eos_top = False
 
         # The attentions (matrix) for each time.
-        self.attn = []
+        self.attn1 = []
+        self.attn2 = []
 
         # Time and k pair for finished.
         self.finished = []
@@ -53,6 +49,7 @@ class Beam(object):
 
         # Information for global scoring.
         self.global_scorer = global_scorer
+        self.global_scorer2 = global_scorer
         self.global_state = {}
 
         # Minimum prediction length
@@ -71,7 +68,7 @@ class Beam(object):
         "Get the backpointers for the current timestep."
         return self.prev_ks[-1]
 
-    def advance(self, word_probs, attn_out):
+    def advance(self, word_probs, attn_out1, attn_out2):
         """
         Given prob over words for every last beam `wordLk` and attention
         `attn_out`: Compute and update the beam search.
@@ -85,7 +82,8 @@ class Beam(object):
         """
         num_words = word_probs.size(1)
         if self.stepwise_penalty:
-            self.global_scorer.update_score(self, attn_out)
+            self.global_scorer.update_score(self, attn_out1)
+            self.global_scorer2.update_score(self, attn_out2)
         # force the output to be longer than self.min_length
         cur_len = len(self.next_ys)
         if cur_len < self.min_length:
@@ -110,8 +108,7 @@ class Beam(object):
                     gram = []
                     for i in range(le - 1):
                         # Last n tokens, n = block_ngram_repeat
-                        gram = (gram +
-                                [hyp[i].item()])[-self.block_ngram_repeat:]
+                        gram = (gram + [hyp[i].item()])[-self.block_ngram_repeat:]
                         # Skip the blocking if it is in the exclusion list
                         if set(gram) & self.exclusion_tokens:
                             continue
@@ -123,8 +120,7 @@ class Beam(object):
         else:
             beam_scores = word_probs[0]
         flat_beam_scores = beam_scores.view(-1)
-        best_scores, best_scores_id = flat_beam_scores.topk(self.size, 0,
-                                                            True, True)
+        best_scores, best_scores_id = flat_beam_scores.topk(self.size, 0, True, True)
 
         self.all_scores.append(self.scores)
         self.scores = best_scores
@@ -134,7 +130,8 @@ class Beam(object):
         prev_k = best_scores_id / num_words
         self.prev_ks.append(prev_k)
         self.next_ys.append((best_scores_id - prev_k * num_words))
-        self.attn.append(attn_out.index_select(0, prev_k))
+        self.attn1.append(attn_out1.index_select(0, prev_k))
+        self.attn2.append(attn_out2.index_selecy(0, prev_k))
         self.global_scorer.update_global_state(self)
 
         for i in range(self.next_ys[-1].size(0)):
@@ -170,12 +167,13 @@ class Beam(object):
         """
         Walk back to construct the full hypothesis.
         """
-        hyp, attn = [], []
+        hyp, attn1, attn2 = [], [], []
         for j in range(len(self.prev_ks[:timestep]) - 1, -1, -1):
             hyp.append(self.next_ys[j + 1][k])
-            attn.append(self.attn[j][k])
+            attn1.append(self.attn1[j][k])
+            attn2.append(self.attn2[j][k])
             k = self.prev_ks[j][k]
-        return hyp[::-1], torch.stack(attn[::-1])
+        return hyp[::-1], torch.stack(attn1[::-1]), torch.stack(attn2[::-1])
 
 
 class GNMTGlobalScorer(object):
@@ -191,8 +189,7 @@ class GNMTGlobalScorer(object):
     def __init__(self, opt):
         self.alpha = opt.alpha
         self.beta = opt.beta
-        penalty_builder = penalties.PenaltyBuilder(opt.coverage_penalty,
-                                                   opt.length_penalty)
+        penalty_builder = penalties.PenaltyBuilder(opt.coverage_penalty, opt.length_penalty)
         # Term will be subtracted from probability
         self.cov_penalty = penalty_builder.coverage_penalty()
         # Probability will be divided by this
@@ -202,13 +199,9 @@ class GNMTGlobalScorer(object):
         """
         Rescores a prediction based on penalty functions
         """
-        normalized_probs = self.length_penalty(beam,
-                                               logprobs,
-                                               self.alpha)
+        normalized_probs = self.length_penalty(beam, logprobs, self.alpha)
         if not beam.stepwise_penalty:
-            penalty = self.cov_penalty(beam,
-                                       beam.global_state["coverage"],
-                                       self.beta)
+            penalty = self.cov_penalty(beam, beam.global_state["coverage"], self.beta)
             normalized_probs -= penalty
 
         return normalized_probs
@@ -219,9 +212,7 @@ class GNMTGlobalScorer(object):
         """
         if "prev_penalty" in beam.global_state.keys():
             beam.scores.add_(beam.global_state["prev_penalty"])
-            penalty = self.cov_penalty(beam,
-                                       beam.global_state["coverage"] + attn,
-                                       self.beta)
+            penalty = self.cov_penalty(beam, beam.global_state["coverage"] + attn, self.beta)
             beam.scores.sub_(penalty)
 
     def update_global_state(self, beam):
@@ -231,12 +222,9 @@ class GNMTGlobalScorer(object):
             beam.global_state["coverage"] = beam.attn[-1]
             self.cov_total = beam.attn[-1].sum(1)
         else:
-            self.cov_total += torch.min(beam.attn[-1],
-                                        beam.global_state['coverage']).sum(1)
-            beam.global_state["coverage"] = beam.global_state["coverage"] \
+            self.cov_total += torch.min(beam.attn[-1], beam.global_state['coverage']).sum(1)
+            beam.global_state["coverage"] = beam.global_state["coverage"]\
                 .index_select(0, beam.prev_ks[-1]).add(beam.attn[-1])
 
-            prev_penalty = self.cov_penalty(beam,
-                                            beam.global_state["coverage"],
-                                            self.beta)
+            prev_penalty = self.cov_penalty(beam, beam.global_state["coverage"], self.beta)
             beam.global_state["prev_penalty"] = prev_penalty
