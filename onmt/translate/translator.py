@@ -221,13 +221,13 @@ class Translator(object):
                         srcs1 = [str(item) for item in range(len(attns1[0]))]
                         srcs2 = [str(item) for item in range(len(attns2[0]))]
                     header_format = "{:>10.10} " + "{:>10.7} " * len(srcs1) + "{:>10.7}" * len(srcs2)
-                    row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7}" * len(srcs2)
+                    row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7f}" * len(srcs2)
                     output = header_format.format("", *srcs1, *srcs2) + '\n'
                     for word, row1, row2 in zip(preds, attns1, attns2):
                         if max(row1) > max(row2):
                             max_index = row1.index(max(row1))
                         else:
-                            max_index = len(row1) + row2.index(max(row2))
+                            max_index = len(srcs1) + row2.index(max(row2))
                         row_format = row_format.replace("{:>10.7f} ", "{:*>10.7f} ", max_index + 1)
                         row_format = row_format.replace("{:*>10.7f} ", "{:>10.7f} ", max_index)
                         output += row_format.format(word, *row1, *row2) + '\n'
