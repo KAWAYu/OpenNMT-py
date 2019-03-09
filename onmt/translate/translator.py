@@ -231,7 +231,7 @@ class Translator(object):
                         row_format = row_format.replace("{:>10.7f} ", "{:*>10.7f} ", max_index + 1)
                         row_format = row_format.replace("{:*>10.7f} ", "{:>10.7f} ", max_index)
                         output += row_format.format(word, *row1, *row2) + '\n'
-                        row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7}" * len(srcs2)
+                        row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7f}" * len(srcs2)
                     os.write(1, output.encode('utf-8'))
 
         if self.report_score:
