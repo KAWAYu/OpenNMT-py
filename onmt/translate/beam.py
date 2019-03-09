@@ -131,7 +131,7 @@ class Beam(object):
         self.prev_ks.append(prev_k)
         self.next_ys.append((best_scores_id - prev_k * num_words))
         self.attn1.append(attn_out1.index_select(0, prev_k))
-        self.attn2.append(attn_out2.index_selecy(0, prev_k))
+        self.attn2.append(attn_out2.index_select(0, prev_k))
         self.global_scorer.update_global_state(self)
 
         for i in range(self.next_ys[-1].size(0)):
@@ -219,12 +219,12 @@ class GNMTGlobalScorer(object):
         "Keeps the coverage vector as sum of attentions"
         if len(beam.prev_ks) == 1:
             beam.global_state["prev_penalty"] = beam.scores.clone().fill_(0.0)
-            beam.global_state["coverage"] = beam.attn[-1]
-            self.cov_total = beam.attn[-1].sum(1)
+            beam.global_state["coverage"] = beam.attn1[-1]
+            self.cov_total = beam.attn1[-1].sum(1)
         else:
-            self.cov_total += torch.min(beam.attn[-1], beam.global_state['coverage']).sum(1)
+            self.cov_total += torch.min(beam.attn1[-1], beam.global_state['coverage']).sum(1)
             beam.global_state["coverage"] = beam.global_state["coverage"]\
-                .index_select(0, beam.prev_ks[-1]).add(beam.attn[-1])
+                .index_select(0, beam.prev_ks[-1]).add(beam.attn1[-1])
 
             prev_penalty = self.cov_penalty(beam, beam.global_state["coverage"], self.beta)
             beam.global_state["prev_penalty"] = prev_penalty
