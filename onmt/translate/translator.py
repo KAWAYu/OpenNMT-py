@@ -224,8 +224,8 @@ class Translator(object):
                     row_format = "{:>10.10} " + "{:>10.7f} " * len(srcs1) + "{:>10.7f}" * len(srcs2)
                     output = header_format.format("", *srcs1, *srcs2) + '\n'
                     for word, row1, row2 in zip(preds, attns1, attns2):
-                        row1 = row1[:len(src1)]
-                        row2 = row2[:len(src2)]
+                        row1 = row1[:len(srcs1)]
+                        row2 = row2[:len(srcs2)]
                         if max(row1) > max(row2):
                             max_index = row1.index(max(row1))
                         else:
