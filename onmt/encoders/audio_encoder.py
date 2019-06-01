@@ -1,4 +1,4 @@
-""" Audio encoder """
+"""Audio encoder"""
 import math
 
 import torch.nn as nn
@@ -11,19 +11,22 @@ from onmt.encoders.encoder import EncoderBase
 
 
 class AudioEncoder(EncoderBase):
-    """
-    A simple encoder convolutional -> recurrent neural network for
-    audio input.
+    """A simple encoder CNN -> RNN for audio input.
 
     Args:
-        num_layers (int): number of encoder layers.
-        bidirectional (bool): bidirectional encoder.
-        rnn_size (int): size of hidden states of the rnn.
+        rnn_type (str): Type of RNN (e.g. GRU, LSTM, etc).
+        enc_layers (int): Number of encoder layers.
+        dec_layers (int): Number of decoder layers.
+        brnn (bool): Bidirectional encoder.
+        enc_rnn_size (int): Size of hidden states of the rnn.
+        dec_rnn_size (int): Size of the decoder hidden states.
+        enc_pooling (str): A comma separated list either of length 1
+            or of length ``enc_layers`` specifying the pooling amount.
         dropout (float): dropout probablity.
         sample_rate (float): input spec
         window_size (int): input spec
-
     """
+
     def __init__(self, rnn_type, enc_layers, dec_layers, brnn,
                  enc_rnn_size, dec_rnn_size, enc_pooling, dropout,
                  sample_rate, window_size):
@@ -48,8 +51,10 @@ class AudioEncoder(EncoderBase):
         enc_pooling = [int(p) for p in enc_pooling]
         self.enc_pooling = enc_pooling
 
-        if dropout > 0:
-            self.dropout = nn.Dropout(dropout)
+        if type(dropout) is not list:
+            dropout = [dropout]
+        if max(dropout) > 0:
+            self.dropout = nn.Dropout(dropout[0])
         else:
             self.dropout = None
         self.W = nn.Linear(enc_rnn_size, dec_rnn_size, bias=False)
@@ -59,7 +64,7 @@ class AudioEncoder(EncoderBase):
                         input_size=input_size,
                         hidden_size=enc_rnn_size_real,
                         num_layers=1,
-                        dropout=dropout,
+                        dropout=dropout[0],
                         bidirectional=brnn)
         self.pool_0 = nn.MaxPool1d(enc_pooling[0])
         for l in range(enc_layers - 1):
@@ -69,7 +74,7 @@ class AudioEncoder(EncoderBase):
                             input_size=enc_rnn_size,
                             hidden_size=enc_rnn_size_real,
                             num_layers=1,
-                            dropout=dropout,
+                            dropout=dropout[0],
                             bidirectional=brnn)
             setattr(self, 'rnn_%d' % (l + 1), rnn)
             setattr(self, 'pool_%d' % (l + 1),
@@ -78,6 +83,7 @@ class AudioEncoder(EncoderBase):
 
     @classmethod
     def from_opt(cls, opt, embeddings=None):
+        """Alternate constructor."""
         if embeddings is not None:
             raise ValueError("Cannot use embeddings with AudioEncoder.")
         return cls(
@@ -93,8 +99,7 @@ class AudioEncoder(EncoderBase):
             opt.window_size)
 
     def forward(self, src, lengths=None):
-        "See :obj:`onmt.encoders.encoder.EncoderBase.forward()`"
-
+        """See :func:`onmt.encoders.encoder.EncoderBase.forward()`"""
         batch_size, _, nfft, t = src.size()
         src = src.transpose(0, 1).transpose(0, 3).contiguous() \
                  .view(t, batch_size, nfft)
@@ -112,7 +117,7 @@ class AudioEncoder(EncoderBase):
             t, _, _ = memory_bank.size()
             memory_bank = memory_bank.transpose(0, 2)
             memory_bank = pool(memory_bank)
-            lengths = [int(math.floor((length - stride)/stride + 1))
+            lengths = [int(math.floor((length - stride) / stride + 1))
                        for length in lengths]
             memory_bank = memory_bank.transpose(0, 2)
             src = memory_bank
@@ -134,3 +139,8 @@ class AudioEncoder(EncoderBase):
         else:
             encoder_final = state
         return encoder_final, memory_bank, orig_lengths.new_tensor(lengths)
+
+    def update_dropout(self, dropout):
+        self.dropout.p = dropout
+        for i in range(self.enc_layers - 1):
+            getattr(self, 'rnn_%d' % i).dropout = dropout

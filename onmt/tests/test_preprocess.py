@@ -47,11 +47,13 @@ class TestData(unittest.TestCase):
             with codecs.open(opt.tgt_vocab, 'w', 'utf-8') as f:
                 f.write('a\nb\nc\nd\ne\nf\n')
 
-        train_data_files = preprocess.build_save_dataset('train', fields, opt)
+        src_reader = onmt.inputters.str2reader[opt.data_type].from_opt(opt)
+        tgt_reader = onmt.inputters.str2reader["text"].from_opt(opt)
+        preprocess.build_save_dataset(
+            'train', fields, src_reader, tgt_reader, opt)
 
-        preprocess.build_save_vocab(train_data_files, fields, opt)
-
-        preprocess.build_save_dataset('valid', fields, opt)
+        preprocess.build_save_dataset(
+            'valid', fields, src_reader, tgt_reader, opt)
 
         # Remove the generated *pt files.
         for pt in glob.glob(SAVE_DATA_PREFIX + '*.pt'):
@@ -132,8 +134,8 @@ test_databuild = [[],
                   ]
 test_databuild_common = [('data_type', 'img'),
                          ('src_dir', '/tmp/im2text/images'),
-                         ('train_src', '/tmp/im2text/src-train-head.txt'),
-                         ('train_tgt', '/tmp/im2text/tgt-train-head.txt'),
+                         ('train_src', ['/tmp/im2text/src-train-head.txt']),
+                         ('train_tgt', ['/tmp/im2text/tgt-train-head.txt']),
                          ('valid_src', '/tmp/im2text/src-val-head.txt'),
                          ('valid_tgt', '/tmp/im2text/tgt-val-head.txt'),
                          ]
@@ -160,8 +162,8 @@ test_databuild = [[],
                   ]
 test_databuild_common = [('data_type', 'audio'),
                          ('src_dir', '/tmp/speech/an4_dataset'),
-                         ('train_src', '/tmp/speech/src-train-head.txt'),
-                         ('train_tgt', '/tmp/speech/tgt-train-head.txt'),
+                         ('train_src', ['/tmp/speech/src-train-head.txt']),
+                         ('train_tgt', ['/tmp/speech/tgt-train-head.txt']),
                          ('valid_src', '/tmp/speech/src-val-head.txt'),
                          ('valid_tgt', '/tmp/speech/tgt-val-head.txt'),
                          ('sample_rate', 16000),
