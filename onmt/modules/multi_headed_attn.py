@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from onmt.utils.misc import generate_relative_positions_matrix,\
+from onmt.utils.misc import generate_reordering_position_matrix,\
                             relative_matmul
 # from onmt.utils.misc import aeq
 
@@ -74,7 +74,7 @@ class MultiHeadedAttention(nn.Module):
             self.relative_positions_embeddings = nn.Embedding(
                 vocab_size, self.dim_per_head)
 
-    def forward(self, key, value, query, mask=None,
+    def forward(self, key, value, query, order, mask=None,
                 layer_cache=None, type=None):
         """
         Compute the context vector and the attention vectors.
@@ -111,6 +111,7 @@ class MultiHeadedAttention(nn.Module):
         #    aeq(k_len_, k_len)
         #    aeq(q_len_ == q_len)
         # END CHECKS
+        # TODO: orderのencodingの実装
 
         batch_size = key.size(0)
         dim_per_head = self.dim_per_head
@@ -169,9 +170,8 @@ class MultiHeadedAttention(nn.Module):
         if self.max_relative_positions > 0 and type == "self":
             key_len = key.size(2)
             # 1 or key_len x key_len
-            relative_positions_matrix = generate_relative_positions_matrix(
-                key_len, self.max_relative_positions,
-                cache=True if layer_cache is not None else False)
+            relative_positions_matrix = generate_reordering_position_matrix(
+                key_len, self.max_relative_positions)
             #  1 or key_len x key_len x dim_per_head
             relations_keys = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))

@@ -120,7 +120,7 @@ class TextMultiField(RawField):
         batch_by_feat = list(zip(*batch))
         base_data = self.base_field.process(batch_by_feat[0], device=device)
         if self.base_field.include_lengths:
-            # lengths: batch_size
+            # lengths: batch_size? それぞれの系列長（文長）
             base_data, lengths = base_data
 
         feats = [ff.process(batch_by_feat[i], device=device)
@@ -190,5 +190,7 @@ def text_fields(**kwargs):
             include_lengths=use_len)
         fields_.append((name, feat))
     assert fields_[0][0] == base_name  # sanity check
+    # fields_[0][0]: データセットの名前（src、tgtなど）
+    # fields_[0][1]: データセットを格納したField
     field = TextMultiField(fields_[0][0], fields_[0][1], fields_[1:])
     return field

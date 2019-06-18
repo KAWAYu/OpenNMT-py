@@ -69,9 +69,10 @@ def main(opt, device_id):
             vocab, opt.model_type, dynamic_dict=opt.copy_attn)
     else:
         fields = vocab
+    # NOTE:ここでのfieldsも名前(string)->TextFieldの辞書、ここにorderを追加すればいける？
 
     # Report src and tgt vocab sizes, including for features
-    for side in ['src', 'tgt']:
+    for side in ['src', 'tgt', 'order']:
         f = fields[side]
         try:
             f_iter = iter(f)

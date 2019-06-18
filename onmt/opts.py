@@ -193,12 +193,16 @@ def preprocess_opts(parser):
               help="Path(s) to the training source data")
     group.add('--train_tgt', '-train_tgt', required=True, nargs='+',
               help="Path(s) to the training target data")
+    group.add('--train_order', '-train_order', required=True, nargs='+',
+              help="Path(s) to the training order data")
     group.add('--train_ids', '-train_ids', nargs='+', default=[None],
               help="ids to name training shards, used for corpus weighting")
     group.add('--valid_src', '-valid_src',
               help="Path to the validation source data")
     group.add('--valid_tgt', '-valid_tgt',
               help="Path to the validation target data")
+    group.add('--valid_order', '-valid_order',
+              help="Path to the validation order data")
 
     group.add('--src_dir', '-src_dir', default="",
               help="Source directory for image or audio files.")

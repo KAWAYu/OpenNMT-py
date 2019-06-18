@@ -351,6 +351,8 @@ class Trainer(object):
             if src_lengths is not None:
                 report_stats.n_src_words += src_lengths.sum().item()
 
+            order = batch.order  # TODO: batch（データモデル）にorderを追加
+
             tgt_outer = batch.tgt
 
             bptt = False
@@ -361,7 +363,7 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.accum_count == 1:
                     self.optim.zero_grad()
-                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt)
+                outputs, attns = self.model(src, tgt, order, src_lengths, bptt=bptt)
                 bptt = True
 
                 # 3. Compute loss.

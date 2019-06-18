@@ -104,6 +104,19 @@ def generate_relative_positions_matrix(length, max_relative_positions,
     return final_mat
 
 
+def generate_reordering_position_matrix(order, max_relative_positions):
+    if not isinstance(order, torch.Tensor):
+        length = len(order)
+        order = torch.LongTensor(order)
+    else:
+        length = order.size(0)
+    distance_mat = order - order.unsqueeze(-1)
+    distance_mat_clipped = torch.clamp(distance_mat,
+                                       min=-max_relative_positions, max=max_relative_positions)
+    final_mat = distance_mat_clipped + length
+    return final_mat
+
+
 def relative_matmul(x, z, transpose):
     """Helper function for relative positions attention."""
     batch_size = x.shape[0]

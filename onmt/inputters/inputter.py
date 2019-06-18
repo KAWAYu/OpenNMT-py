@@ -117,6 +117,8 @@ def get_fields(
                         "base_name": "tgt"}
     fields["tgt"] = fields_getters["text"](**tgt_field_kwargs)
 
+    # fields["order"] = ["order", Field(sequential=False, use_vocab=False,)]
+
     indices = Field(use_vocab=False, dtype=torch.long, sequential=False)
     fields["indices"] = indices
 
@@ -576,6 +578,7 @@ class OrderedIterator(torchtext.data.Iterator):
         while True:
             self.init_epoch()
             for idx, minibatch in enumerate(self.batches):
+                # minibatch: List of torchtext.data.example.Example
                 # fast-forward if loaded from state
                 if self._iterations_this_epoch > idx:
                     continue
