@@ -117,7 +117,7 @@ def get_fields(
                         "base_name": "tgt"}
     fields["tgt"] = fields_getters["text"](**tgt_field_kwargs)
 
-    # fields["order"] = ["order", Field(sequential=False, use_vocab=False,)]
+    fields["order"] = Field(sequential=False, use_vocab=False, pad_token='', unk_token='')
 
     indices = Field(use_vocab=False, dtype=torch.long, sequential=False)
     fields["indices"] = indices
