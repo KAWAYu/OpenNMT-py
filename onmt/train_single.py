@@ -79,7 +79,7 @@ def main(opt, device_id):
         except TypeError:
             f_iter = [(side, f)]
         for sn, sf in f_iter:
-            if sf.use_vocab:
+            if getattr(sf, 'use_vocab', None) is not None and sf.use_vocab:
                 logger.info(' * %s vocab size = %d' % (sn, len(sf.vocab)))
 
     # Build model.

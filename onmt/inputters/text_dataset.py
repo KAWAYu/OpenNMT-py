@@ -151,6 +151,17 @@ class TextMultiField(RawField):
         return self.fields[item]
 
 
+class OrderField(RawField):
+    def preprocess(self, x):
+        xlist = [_x.strip().split() for _x in x]
+        self.max_len = max(len(_x) for _x in xlist)
+        return xlist
+
+    def process(self, batch, device=None):
+        batch = [_x + [range(len(_x), self.max_len)] for _x in batch]
+        batch = torch.LongTensor(batch).to(device)
+        return batch
+
 def text_fields(**kwargs):
     """Create text fields.
 

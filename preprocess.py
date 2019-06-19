@@ -110,7 +110,7 @@ def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, order_reader
                                 f_iter, all_data):
                             has_vocab = (sub_n == 'src' and src_vocab) or \
                                         (sub_n == 'tgt' and tgt_vocab)
-                            if sub_f.sequential and not has_vocab:
+                            if getattr(sub_f, 'sequential', None) is not None and sub_f.sequential and not has_vocab:
                                 val = fd
                                 counters[sub_n].update(val)
             if maybe_id:

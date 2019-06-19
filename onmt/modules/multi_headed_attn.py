@@ -171,7 +171,7 @@ class MultiHeadedAttention(nn.Module):
             key_len = key.size(2)
             # 1 or key_len x key_len
             relative_positions_matrix = generate_reordering_position_matrix(
-                key_len, self.max_relative_positions)
+                order, self.max_relative_positions)
             #  1 or key_len x key_len x dim_per_head
             relations_keys = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))

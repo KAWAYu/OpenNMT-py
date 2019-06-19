@@ -9,11 +9,11 @@ from itertools import chain, cycle
 
 import torch
 import torchtext.data
-from torchtext.data import Field
+from torchtext.data import Field, RawField
 from torchtext.vocab import Vocab
 from torchtext.data.utils import RandomShuffler
 
-from onmt.inputters.text_dataset import text_fields, TextMultiField
+from onmt.inputters.text_dataset import text_fields, TextMultiField, OrderField
 from onmt.inputters.image_dataset import image_fields
 from onmt.inputters.audio_dataset import audio_fields
 from onmt.utils.logging import logger
@@ -117,7 +117,7 @@ def get_fields(
                         "base_name": "tgt"}
     fields["tgt"] = fields_getters["text"](**tgt_field_kwargs)
 
-    fields["order"] = Field(sequential=False, use_vocab=False, pad_token='', unk_token='')
+    fields["order"] = OrderField()
 
     indices = Field(use_vocab=False, dtype=torch.long, sequential=False)
     fields["indices"] = indices
