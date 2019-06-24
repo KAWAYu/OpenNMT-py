@@ -155,7 +155,7 @@ class OrderField(RawField):
     def process(self, batch, device=None):
         xlist = [list(map(int, _x.strip().split())) for _x in batch]
         max_len = max(len(_x) for _x in xlist)
-        batch = [_x + [l for l in range(len(_x), max_len)] for _x in batch]
+        batch = [_x + [l for l in range(len(_x), max_len)] for _x in xlist]
         batch = torch.LongTensor(batch).to(device)
         return batch
 

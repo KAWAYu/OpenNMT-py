@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from onmt.utils.misc import generate_reordering_position_matrix,\
-                            reorder_matmul  # relative_matmul
+                            reorder_matmul, reorder_matmul_v  # relative_matmul
 # from onmt.utils.misc import aeq
 
 
@@ -214,7 +214,7 @@ class MultiHeadedAttention(nn.Module):
             #                   + relative_matmul(drop_attn,
             #                                     relations_values,
             #                                     False))
-            context = unshape(context_original + reorder_matmul(drop_attn, relations_values, False))
+            context = unshape(context_original + reorder_matmul_v(drop_attn, relations_values, False))
         else:
             context = unshape(context_original)
 
