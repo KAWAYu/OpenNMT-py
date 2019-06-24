@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from onmt.utils.misc import generate_reordering_position_matrix,\
-                            relative_matmul
+                            reorder_matmul  # relative_matmul
 # from onmt.utils.misc import aeq
 
 
@@ -168,14 +168,17 @@ class MultiHeadedAttention(nn.Module):
             value = shape(value)
 
         if self.max_relative_positions > 0 and type == "self":
-            key_len = key.size(2)
-            # 1 or key_len x key_len
+            # key_len = key.size(2)
+            # 1 or key_len x key_len (if generate_relative_position_matrix)
+            # batch_size x key_len x key_len (if generate_position_matrix)
             relative_positions_matrix = generate_reordering_position_matrix(
                 order, self.max_relative_positions)
-            #  1 or key_len x key_len x dim_per_head
+            #  1 or key_len x key_len x dim_per_head (if generate_relative_position_matrix)
+            #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_keys = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
-            #  1 or key_len x key_len x dim_per_head
+            #  1 or key_len x key_len x dim_per_head (if generate_relative_position_matrix)
+            #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_values = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
 
@@ -190,7 +193,8 @@ class MultiHeadedAttention(nn.Module):
         query_key = torch.matmul(query, key.transpose(2, 3))
 
         if self.max_relative_positions > 0 and type == "self":
-            scores = query_key + relative_matmul(query, relations_keys, True)
+            # scores = query_key + relative_matmul(query, relations_keys, True)
+            scores = query_key + reorder_matmul(query, relations_keys, True)
         else:
             scores = query_key
         scores = scores.float()
@@ -206,10 +210,11 @@ class MultiHeadedAttention(nn.Module):
         context_original = torch.matmul(drop_attn, value)
 
         if self.max_relative_positions > 0 and type == "self":
-            context = unshape(context_original
-                              + relative_matmul(drop_attn,
-                                                relations_values,
-                                                False))
+            # context = unshape(context_original
+            #                   + relative_matmul(drop_attn,
+            #                                     relations_values,
+            #                                     False))
+            context = unshape(context_original + reorder_matmul(drop_attn, relations_values, False))
         else:
             context = unshape(context_original)
 

@@ -106,15 +106,12 @@ def generate_relative_positions_matrix(length, max_relative_positions,
 
 def generate_reordering_position_matrix(order, max_relative_positions):
     if not isinstance(order, torch.Tensor):
-        length = len(order)
         order = torch.LongTensor(order)
-    else:
-        length = order.size(0)
-    distance_mat = order - order.unsqueeze(-1)
+    distance_mat = order.unsqueeze(1) - order.unsqueeze(-1)
     distance_mat_clipped = torch.clamp(distance_mat,
                                        min=-max_relative_positions, max=max_relative_positions)
-    final_mat = distance_mat_clipped + length
-    return final_mat
+    final_mats = distance_mat_clipped + max_relative_positions
+    return final_mats
 
 
 def relative_matmul(x, z, transpose):
@@ -132,6 +129,24 @@ def relative_matmul(x, z, transpose):
     x_tz_matmul_r = x_tz_matmul.reshape(length, batch_size, heads, -1)
     x_tz_matmul_r_t = x_tz_matmul_r.permute(1, 2, 0, 3)
     return x_tz_matmul_r_t
+
+
+def reorder_matmul(x, z, transpose):
+    """Helper function for reordering positions attention."""
+    batch_size = x.size(0)
+    heads = x.size(1)
+    seq_len = x.size(2)
+    xz_embs = []
+    for b in range(batch_size):
+        for h in range(heads):
+            for l in range(seq_len):
+                x_one_emb = x[b, h, l, :]
+                z_emb = z[b, l, :, :]
+                xz = torch.matmul(x_one_emb, z_emb.transpose(0, 1))
+                xz_embs.append(xz)
+    res = torch.stack(xz_embs, dim=1)
+    res_r = res.reshape(batch_size, heads, seq_len, seq_len)
+    return res_r
 
 
 def fn_args(fun):
