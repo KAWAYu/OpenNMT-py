@@ -46,7 +46,7 @@ class TransformerEncoderLayer(nn.Module):
         """
         input_norm = self.layer_norm(inputs)
         context, _ = self.self_attn(input_norm, input_norm, input_norm,
-                                    order, mask=mask, type="self")
+                                    order=order, mask=mask, type="self")
         out = self.dropout(context) + inputs
         return self.feed_forward(out)
 
