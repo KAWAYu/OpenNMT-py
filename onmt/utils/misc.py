@@ -136,7 +136,7 @@ def reorder_matmul(x, z, transpose):
     x_t = x.permute(0, 2, 1, 3)
     z_t = z.permute(0, 1, 3, 2)
     xz = torch.matmul(x_t, z_t)
-    xz_t = xz.permute(0, 1, 3, 2)
+    xz_t = xz.permute(0, 2, 1, 3)
     return xz_t
     # batch_size = x.size(0)
     # heads = x.size(1)
