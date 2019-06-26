@@ -111,7 +111,6 @@ class MultiHeadedAttention(nn.Module):
         #    aeq(k_len_, k_len)
         #    aeq(q_len_ == q_len)
         # END CHECKS
-        # TODO: orderのencodingの実装
 
         batch_size = key.size(0)
         dim_per_head = self.dim_per_head

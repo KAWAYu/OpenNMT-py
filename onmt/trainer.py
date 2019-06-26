@@ -316,8 +316,10 @@ class Trainer(object):
                                    else (batch.src, None)
                 tgt = batch.tgt
 
+                order = batch.order
+
                 # F-prop through the model.
-                outputs, attns = valid_model(src, tgt, src_lengths)
+                outputs, attns = valid_model(src, tgt, order, src_lengths)
 
                 # Compute loss.
                 _, batch_stats = self.valid_loss(batch, outputs, attns)
