@@ -133,37 +133,46 @@ def relative_matmul(x, z, transpose):
 
 def reorder_matmul(x, z, transpose):
     """Helper function for reordering positions attention."""
-    batch_size = x.size(0)
-    heads = x.size(1)
-    seq_len = x.size(2)
-    xz_embs = []
-    for b in range(batch_size):
-        for h in range(heads):
-            for l in range(seq_len):
-                x_one_emb = x[b, h, l, :]
-                z_emb = z[b, l, :, :]
-                xz = torch.matmul(x_one_emb, z_emb.transpose(0, 1))
-                xz_embs.append(xz)
-    res = torch.stack(xz_embs, dim=1)
-    res_r = res.reshape(batch_size, heads, seq_len, seq_len)
-    return res_r
+    x_t = x.permute(0, 2, 1, 3)
+    z_t = z.permute(0, 1, 3, 2)
+    xz = torch.matmul(x_t, z_t)
+    xz_t = xz.permute(0, 1, 3, 2)
+    return xz_t
+    # batch_size = x.size(0)
+    # heads = x.size(1)
+    # seq_len = x.size(2)
+    # xz_embs = []
+    # for b in range(batch_size):
+    #     for h in range(heads):
+    #         for l in range(seq_len):
+    #             x_one_emb = x[b, h, l, :]
+    #             z_emb = z[b, l, :, :]
+    #             xz = torch.matmul(x_one_emb, z_emb.transpose(0, 1))
+    #             xz_embs.append(xz)
+    # res = torch.stack(xz_embs, dim=1)
+    # res_r = res.reshape(batch_size, heads, seq_len, seq_len)
+    # return res_r
 
 
 def reorder_matmul_v(x, z, transpose):
-    batch_size = x.size(0)
-    heads = x.size(1)
-    length = x.size(2)
-    xz_scores = []
-    for b in range(batch_size):
-        for h in range(heads):
-            for l in range(length):
-                x_attn = x[b, h, l, :]
-                z_emb = z[b, l, :, :]
-                xz = torch.matmul(x_attn, z_emb)
-                xz_scores.append(xz)
-    res = torch.stack(xz_scores, dim=1)
-    res_r = res.reshape(batch_size, heads, length, -1)
-    return res_r
+    x_t = x.permute(0, 2, 1, 3)
+    xz = torch.matmul(x_t, z)
+    xz_t = xz.permute(0, 2, 1, 3)
+    return xz_t
+    # batch_size = x.size(0)
+    # heads = x.size(1)
+    # length = x.size(2)
+    # xz_scores = []
+    # for b in range(batch_size):
+    #     for h in range(heads):
+    #         for l in range(length):
+    #             x_attn = x[b, h, l, :]
+    #             z_emb = z[b, l, :, :]
+    #             xz = torch.matmul(x_attn, z_emb)
+    #             xz_scores.append(xz)
+    # res = torch.stack(xz_scores, dim=1)
+    # res_r = res.reshape(batch_size, heads, length, -1)
+    # return res_r
 
 
 def fn_args(fun):
