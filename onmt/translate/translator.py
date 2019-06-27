@@ -215,7 +215,7 @@ class Translator(object):
 
         src_reader = inputters.str2reader[opt.data_type].from_opt(opt)
         tgt_reader = inputters.str2reader["text"].from_opt(opt)
-        order_reader = inputters.str2reader["text"].from_opt()
+        order_reader = inputters.str2reader["text"]()
         return cls(
             model,
             fields,
