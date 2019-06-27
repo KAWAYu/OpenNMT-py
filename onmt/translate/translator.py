@@ -89,6 +89,7 @@ class Translator(object):
             fields,
             src_reader,
             tgt_reader,
+            order_reader,
             gpu=-1,
             n_best=1,
             min_length=0,
@@ -146,6 +147,7 @@ class Translator(object):
             self._tgt_vocab.stoi[t] for t in self.ignore_when_blocking}
         self.src_reader = src_reader
         self.tgt_reader = tgt_reader
+        self.order_reader = order_reader
         self.replace_unk = replace_unk
         if self.replace_unk and not self.model.decoder.attentional:
             raise ValueError(
@@ -213,11 +215,13 @@ class Translator(object):
 
         src_reader = inputters.str2reader[opt.data_type].from_opt(opt)
         tgt_reader = inputters.str2reader["text"].from_opt(opt)
+        order_reader = inputters.str2reader["text"].from_opt()
         return cls(
             model,
             fields,
             src_reader,
             tgt_reader,
+            order_reader,
             gpu=opt.gpu,
             n_best=opt.n_best,
             min_length=opt.min_length,
@@ -264,6 +268,7 @@ class Translator(object):
     def translate(
             self,
             src,
+            order,
             tgt=None,
             src_dir=None,
             batch_size=None,
@@ -292,9 +297,9 @@ class Translator(object):
 
         data = inputters.Dataset(
             self.fields,
-            readers=([self.src_reader, self.tgt_reader]
-                     if tgt else [self.src_reader]),
-            data=[("src", src), ("tgt", tgt)] if tgt else [("src", src)],
+            readers=([self.src_reader, self.tgt_reader, self.order_reader]
+                     if tgt else [self.src_reader, self.order_reader]),
+            data=[("src", src), ("tgt", tgt), ("order", order)] if tgt else [("src", src), ("order", order)],
             dirs=[src_dir, None] if tgt else [src_dir],
             sort_key=inputters.str2sortkey[self.data_type],
             filter_pred=self._filter_pred
@@ -525,9 +530,10 @@ class Translator(object):
     def _run_encoder(self, batch):
         src, src_lengths = batch.src if isinstance(batch.src, tuple) \
                            else (batch.src, None)
+        order = batch.order
 
         enc_states, memory_bank, src_lengths = self.model.encoder(
-            src, src_lengths)
+            src, order, src_lengths)
         if src_lengths is None:
             assert not isinstance(memory_bank, tuple), \
                 'Ensemble decoding only supported for text data'

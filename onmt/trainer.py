@@ -353,7 +353,7 @@ class Trainer(object):
             if src_lengths is not None:
                 report_stats.n_src_words += src_lengths.sum().item()
 
-            order = batch.order  # TODO: batch（データモデル）にorderを追加
+            order = batch.order
 
             tgt_outer = batch.tgt
 
