@@ -3,8 +3,8 @@ import math
 import torch
 import torch.nn as nn
 
-from onmt.utils.misc import generate_reordering_position_matrix,\
-                            reorder_matmul, reorder_matmul_v  # relative_matmul
+from onmt.utils.misc import generate_reordering_position_matrix, generate_relative_positions_matrix, \
+                            reorder_matmul, reorder_matmul_v, relative_matmul
 # from onmt.utils.misc import aeq
 
 
@@ -72,6 +72,8 @@ class MultiHeadedAttention(nn.Module):
         if max_relative_positions > 0:
             vocab_size = max_relative_positions * 2 + 1
             self.relative_positions_embeddings = nn.Embedding(
+                vocab_size, self.dim_per_head)
+            self.reordering_position_embeddings = nn.Embedding(
                 vocab_size, self.dim_per_head)
 
     def forward(self, key, value, query, order=None, mask=None,
@@ -167,19 +169,26 @@ class MultiHeadedAttention(nn.Module):
             value = shape(value)
 
         if order is not None and self.max_relative_positions > 0 and type == "self":
-            # key_len = key.size(2)
+            key_len = key.size(2)
             # 1 or key_len x key_len (if generate_relative_position_matrix)
             # batch_size x key_len x key_len (if generate_position_matrix)
-            relative_positions_matrix = generate_reordering_position_matrix(
+            relative_positions_matrix = generate_relative_positions_matrix(
+                key_len, self.max_relative_positions,
+                cache=True if layer_cache is not None else False)
+            reordering_position_matrix = generate_reordering_position_matrix(
                 order, self.max_relative_positions)
             #  1 or key_len x key_len x dim_per_head (if generate_relative_position_matrix)
             #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_keys = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
+            reordering_keys = self.reordering_position_embeddings(
+                reordering_position_matrix.to(device))
             #  1 or key_len x key_len x dim_per_head (if generate_relative_position_matrix)
             #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_values = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
+            reordering_values = self.reordering_position_embeddings(
+                reordering_position_matrix.to(device))
 
         query = shape(query)
 
@@ -191,9 +200,11 @@ class MultiHeadedAttention(nn.Module):
         # batch x num_heads x query_len x key_len
         query_key = torch.matmul(query, key.transpose(2, 3))
 
-        if order is not None and self.max_relative_positions > 0 and type == "self":
+        if self.max_relative_positions > 0 and type == "self":
             # scores = query_key + relative_matmul(query, relations_keys, True)
-            scores = query_key + reorder_matmul(query, relations_keys, True)
+            scores = query_key + relative_matmul(query, relations_keys, True)
+            if order is not None:
+                scores += reorder_matmul(query, reordering_keys, True)
         else:
             scores = query_key
         scores = scores.float()
@@ -208,12 +219,13 @@ class MultiHeadedAttention(nn.Module):
 
         context_original = torch.matmul(drop_attn, value)
 
-        if order is not None and self.max_relative_positions > 0 and type == "self":
-            # context = unshape(context_original
-            #                   + relative_matmul(drop_attn,
-            #                                     relations_values,
-            #                                     False))
-            context = unshape(context_original + reorder_matmul_v(drop_attn, relations_values, False))
+        if self.max_relative_positions > 0 and type == "self":
+            context = unshape(context_original
+                              + relative_matmul(drop_attn,
+                                                relations_values,
+                                                False))
+            if order is not None:
+                context += unshape(context_original + reorder_matmul_v(drop_attn, reordering_values, False))
         else:
             context = unshape(context_original)
 
