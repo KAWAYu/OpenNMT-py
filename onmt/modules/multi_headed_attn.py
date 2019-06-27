@@ -168,27 +168,28 @@ class MultiHeadedAttention(nn.Module):
             key = shape(key)
             value = shape(value)
 
-        if order is not None and self.max_relative_positions > 0 and type == "self":
+        if self.max_relative_positions > 0 and type == "self":
             key_len = key.size(2)
             # 1 or key_len x key_len (if generate_relative_position_matrix)
             # batch_size x key_len x key_len (if generate_position_matrix)
             relative_positions_matrix = generate_relative_positions_matrix(
                 key_len, self.max_relative_positions,
                 cache=True if layer_cache is not None else False)
-            reordering_position_matrix = generate_reordering_position_matrix(
-                order, self.max_relative_positions)
             #  1 or key_len x key_len x dim_per_head (if generate_relative_position_matrix)
             #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_keys = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
-            reordering_keys = self.reordering_position_embeddings(
-                reordering_position_matrix.to(device))
             #  1 or key_len x key_len x dim_per_head (if generate_relative_position_matrix)
             #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_values = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
-            reordering_values = self.reordering_position_embeddings(
-                reordering_position_matrix.to(device))
+            if order is not None:
+                reordering_position_matrix = generate_reordering_position_matrix(
+                    order, self.max_relative_positions)
+                reordering_keys = self.reordering_position_embeddings(
+                    reordering_position_matrix.to(device))
+                reordering_values = self.reordering_position_embeddings(
+                    reordering_position_matrix.to(device))
 
         query = shape(query)
 
