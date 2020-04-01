@@ -64,7 +64,7 @@ class ReorderingPositionEncoding(nn.Module):
         div_term = torch.exp(torch.arange(0, dim, 2, dtype=torch.float) * -(math.log(10000.0) / dim))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
-        pe.unsqueeze(1)
+        pe = pe.unsqueeze(1)
         super(ReorderingPositionEncoding, self).__init__()
         self.register_buffer('rpe', pe)
         self.dropout = nn.Dropout(dropout)
