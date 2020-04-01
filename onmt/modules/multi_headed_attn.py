@@ -183,13 +183,13 @@ class MultiHeadedAttention(nn.Module):
             #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_values = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
-            if order is not None:
-                reordering_position_matrix = generate_reordering_position_matrix(
-                    order, self.max_relative_positions)
-                reordering_keys = self.reordering_position_embeddings(
-                    reordering_position_matrix.to(device))
-                reordering_values = self.reordering_position_embeddings(
-                    reordering_position_matrix.to(device))
+            # if order is not None:
+            #     reordering_position_matrix = generate_reordering_position_matrix(
+            #         order, self.max_relative_positions)
+            #     reordering_keys = self.reordering_position_embeddings(
+            #         reordering_position_matrix.to(device))
+            #     reordering_values = self.reordering_position_embeddings(
+            #         reordering_position_matrix.to(device))
 
         query = shape(query)
 
@@ -204,8 +204,8 @@ class MultiHeadedAttention(nn.Module):
         if self.max_relative_positions > 0 and type == "self":
             # scores = query_key + relative_matmul(query, relations_keys, True)
             scores = query_key + relative_matmul(query, relations_keys, True)
-            if order is not None:
-                scores += reorder_matmul(query, reordering_keys, True)
+            # if order is not None:
+            #     scores += reorder_matmul(query, reordering_keys, True)
         else:
             scores = query_key
         scores = scores.float()
@@ -225,8 +225,8 @@ class MultiHeadedAttention(nn.Module):
                               + relative_matmul(drop_attn,
                                                 relations_values,
                                                 False))
-            if order is not None:
-                context += unshape(context_original + reorder_matmul_v(drop_attn, reordering_values, False))
+            # if order is not None:
+            #     context += unshape(context_original + reorder_matmul_v(drop_attn, reordering_values, False))
         else:
             context = unshape(context_original)
 

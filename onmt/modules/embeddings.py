@@ -136,8 +136,7 @@ class Embeddings(nn.Module):
                  dropout=0,
                  sparse=False,
                  fix_word_vecs=False,
-                 reordering_position_encoding=False,
-                 reordering_position=None):
+                 reordering_position_encoding=False):
         self._validate_args(feat_merge, feat_vocab_sizes, feat_vec_exponent,
                             feat_vec_size, feat_padding_idx)
 
@@ -201,9 +200,7 @@ class Embeddings(nn.Module):
             self.make_embedding.add_module('pe', pe)
 
         if self.reordering_position_encoding:
-            if reordering_position is None:
-                raise ValueError("Reordering Position Error")
-            re = ReorderingPositionEncoding(dropout, self.embedding_size, reordering_position)
+            re = ReorderingPositionEncoding(dropout, self.embedding_size)
             self.make_embedding.add_module('re', re)
 
         if fix_word_vecs:
