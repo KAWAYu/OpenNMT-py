@@ -51,7 +51,7 @@ def build_embeddings(opt, text_field, for_encoder=True):
         feat_vocab_sizes=num_feat_embeddings,
         sparse=opt.optim == "sparseadam",
         fix_word_vecs=fix_word_vecs,
-        reordering_position_encoding=opt.reordering_position_encoding
+        reordering_position_encoding=opt.reordering_position_encoding and for_encoder
     )
     return emb
 
