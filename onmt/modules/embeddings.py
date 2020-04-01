@@ -74,7 +74,7 @@ class ReorderingPositionEncoding(nn.Module):
         emb = emb * math.sqrt(self.dim)
         clipped_pe = self.rpe[:emb.size(0)]
         clipped_pe = clipped_pe.expand(emb.size())
-        order = order.transpose(1, 0).unsqueeze(2).expand((-1, -1, emb.size(0)))
+        order = order.transpose(1, 0).unsqueeze(2).expand((-1, -1, emb.size(2)))
         clipped_pe.gather(0, order)
         if step is None:
             emb = emb + clipped_pe
