@@ -115,7 +115,10 @@ class TransformerEncoder(EncoderBase):
         """See :func:`EncoderBase.forward()`"""
         self._check_args(src, lengths)
 
-        emb = self.embeddings(src)
+        if self.embeddings.reordering_position_encoding:
+            emb = self.embeddings(src, order=order)
+        else:
+            emb = self.embeddings(src)
 
         out = emb.transpose(0, 1).contiguous()
         words = src[:, :, 0].transpose(0, 1)

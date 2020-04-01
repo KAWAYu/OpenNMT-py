@@ -54,6 +54,36 @@ class PositionalEncoding(nn.Module):
         return emb
 
 
+class ReorderingPositionEncoding(nn.Module):
+    def __init__(self, dropout, dim, max_len=5000):
+        if dim % 2 != 0:
+            raise ValueError("Cannot use sin/cos positional encoding with "
+                             "odd dim (got dim={:d}".format(dim))
+        pe = torch.zeros(max_len, dim)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, dim, 2, dtype=torch.float) * -(math.log(10000.0) / dim))
+        pe[:, 0::2] = torch.sin(position.float() * div_term)
+        pe[:, 1::2] = torch.cos(position.float() * div_term)
+        pe.unsqueeze(1)
+        super(ReorderingPositionEncoding, self).__init__()
+        self.register_buffer('rpe', pe)
+        self.dropout = nn.Dropout(dropout)
+        self.dim = dim
+
+    def forward(self, emb, order, step=None):
+        emb = emb * math.sqrt(self.dim)
+        clipped_pe = self.pe[:emb.size(0)]
+        clipped_pe = clipped_pe.expand(emb.size())
+        order = order.transpose(1, 0).unsqueeze(2).expand((-1, -1, emb.size(0)))
+        clipped_pe.gather(order)
+        if step is None:
+            emb = emb + clipped_pe
+        else:
+            emb = emb + clipped_pe[step]
+        emb = self.dropout(emb)
+        return emb
+
+
 class Embeddings(nn.Module):
     """Words embeddings for encoder/decoder.
 
@@ -105,7 +135,9 @@ class Embeddings(nn.Module):
                  feat_vocab_sizes=[],
                  dropout=0,
                  sparse=False,
-                 fix_word_vecs=False):
+                 fix_word_vecs=False,
+                 reordering_position_encoding=False,
+                 reordering_position=None):
         self._validate_args(feat_merge, feat_vocab_sizes, feat_vec_exponent,
                             feat_vec_size, feat_padding_idx)
 
@@ -162,10 +194,17 @@ class Embeddings(nn.Module):
             self.make_embedding.add_module('mlp', mlp)
 
         self.position_encoding = position_encoding
+        self.reordering_position_encoding = reordering_position_encoding
 
         if self.position_encoding:
             pe = PositionalEncoding(dropout, self.embedding_size)
             self.make_embedding.add_module('pe', pe)
+
+        if self.reordering_position_encoding:
+            if reordering_position is None:
+                raise ValueError("Reordering Position Error")
+            re = ReorderingPositionEncoding(dropout, self.embedding_size, reordering_position)
+            self.make_embedding.add_module('re', re)
 
         if fix_word_vecs:
             self.word_lut.weight.requires_grad = False
@@ -225,7 +264,7 @@ class Embeddings(nn.Module):
             else:
                 self.word_lut.weight.data.copy_(pretrained)
 
-    def forward(self, source, step=None):
+    def forward(self, source, order=None, step=None):
         """Computes the embeddings for words and features.
 
         Args:
@@ -235,10 +274,12 @@ class Embeddings(nn.Module):
             FloatTensor: Word embeddings ``(len, batch, embedding_size)``
         """
 
-        if self.position_encoding:
-            for i, module in enumerate(self.make_embedding._modules.values()):
-                if i == len(self.make_embedding._modules.values()) - 1:
+        if self.position_encoding or self.reordering_position_encoding:
+            for module_name, module in self.make_embedding._modules.items():
+                if module_name == 'pe':
                     source = module(source, step=step)
+                elif module_name == 're':
+                    source = module(source, order, step=step)
                 else:
                     source = module(source)
         else:
