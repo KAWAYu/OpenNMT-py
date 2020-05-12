@@ -72,7 +72,7 @@ def main(opt, device_id):
     # NOTE:ここでのfieldsも名前(string)->TextFieldの辞書、ここにorderを追加すればいける？
 
     # Report src and tgt vocab sizes, including for features
-    for side in ['src', 'tgt', 'order']:
+    for side in ['src', 'tgt', 'order1', 'order2']:
         f = fields[side]
         try:
             f_iter = iter(f)

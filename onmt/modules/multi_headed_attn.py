@@ -76,7 +76,7 @@ class MultiHeadedAttention(nn.Module):
             self.reordering_position_embeddings = nn.Embedding(
                 vocab_size, self.dim_per_head)
 
-    def forward(self, key, value, query, order=None, mask=None,
+    def forward(self, key, value, query, order1=None, order2=None, mask=None,
                 layer_cache=None, type=None):
         """
         Compute the context vector and the attention vectors.
@@ -183,13 +183,20 @@ class MultiHeadedAttention(nn.Module):
             #  batch_size x key_len x key_len x dim_per_head (if generate_position_matrix)
             relations_values = self.relative_positions_embeddings(
                 relative_positions_matrix.to(device))
-            if order is not None:
-                reordering_position_matrix = generate_reordering_position_matrix(
-                    order, self.max_relative_positions)
-                reordering_keys = self.reordering_position_embeddings(
-                    reordering_position_matrix.to(device))
-                reordering_values = self.reordering_position_embeddings(
-                    reordering_position_matrix.to(device))
+            if order1 is not None:
+                reordering_position_matrix1 = generate_reordering_position_matrix(
+                    order1, self.max_relative_positions)
+                reordering_keys1 = self.reordering_position_embeddings(
+                    reordering_position_matrix1.to(device))
+                reordering_values1 = self.reordering_position_embeddings(
+                    reordering_position_matrix1.to(device))
+            if order2 is not None:
+                reordering_position_matrix2 = generate_reordering_position_matrix(
+                    order2, self.max_relative_positions)
+                reordering_keys2 = self.reordering_position_embeddings(
+                    reordering_position_matrix2.to(device))
+                reordering_values2 = self.reordering_position_embeddings(
+                    reordering_position_matrix2.to(device))
 
         query = shape(query)
 
@@ -204,8 +211,10 @@ class MultiHeadedAttention(nn.Module):
         if self.max_relative_positions > 0 and type == "self":
             # scores = query_key + relative_matmul(query, relations_keys, True)
             scores = query_key + relative_matmul(query, relations_keys, True)
-            if order is not None:
-                scores += reorder_matmul(query, reordering_keys, True)
+            if order1 is not None:
+                scores += reorder_matmul(query, reordering_keys1, True)
+            if order2 is not None:
+                scores += reorder_matmul(query, reordering_keys2, True)
         else:
             scores = query_key
         scores = scores.float()
@@ -225,8 +234,10 @@ class MultiHeadedAttention(nn.Module):
                               + relative_matmul(drop_attn,
                                                 relations_values,
                                                 False))
-            if order is not None:
-                context += unshape(context_original + reorder_matmul_v(drop_attn, reordering_values, False))
+            if order1 is not None:
+                context += unshape(context_original + reorder_matmul_v(drop_attn, reordering_values1, False))
+            if order2 is not None:
+                context += unshape(context_original + reorder_matmul_v(drop_attn, reordering_values2, False))
         else:
             context = unshape(context_original)
 

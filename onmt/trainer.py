@@ -316,10 +316,11 @@ class Trainer(object):
                                    else (batch.src, None)
                 tgt = batch.tgt
 
-                order = batch.order
+                order1 = batch.order
+                order2 = batch.order2
 
                 # F-prop through the model.
-                outputs, attns = valid_model(src, tgt, order, src_lengths)
+                outputs, attns = valid_model(src, tgt, order1, order2, src_lengths)
 
                 # Compute loss.
                 _, batch_stats = self.valid_loss(batch, outputs, attns)
@@ -353,7 +354,8 @@ class Trainer(object):
             if src_lengths is not None:
                 report_stats.n_src_words += src_lengths.sum().item()
 
-            order = batch.order
+            order1 = batch.order1
+            order2 = batch.order2
 
             tgt_outer = batch.tgt
 
@@ -365,7 +367,7 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.accum_count == 1:
                     self.optim.zero_grad()
-                outputs, attns = self.model(src, tgt, order, src_lengths, bptt=bptt)
+                outputs, attns = self.model(src, tgt, order1, order2, src_lengths, bptt=bptt)
                 bptt = True
 
                 # 3. Compute loss.

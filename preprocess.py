@@ -31,28 +31,31 @@ def check_existing_pt_files(opt):
             sys.exit(1)
 
 
-def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, order_reader, opt):
+def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, order1_reader, order2_reader, opt):
     assert corpus_type in ['train', 'valid']
 
     if corpus_type == 'train':
         counters = defaultdict(Counter)
         srcs = opt.train_src
         tgts = opt.train_tgt
-        orders = opt.train_order
+        orders1 = opt.train_order1
+        orders2 = opt.train_order2
         ids = opt.train_ids
     else:
         srcs = [opt.valid_src]
         tgts = [opt.valid_tgt]
-        orders = [opt.valid_order]
+        orders1 = [opt.valid_order1]
+        orders2 = [opt.valid_order2]
         ids = [None]
 
-    for src, tgt, order, maybe_id in zip(srcs, tgts, orders, ids):
-        logger.info("Reading source, target and order files: %s %s %s." % (src, tgt, order))
+    for src, tgt, order1, order2, maybe_id in zip(srcs, tgts, orders1, orders2, ids):
+        logger.info("Reading source, target and order files: %s %s %s %s." % (src, tgt, order1, order2))
 
         src_shards = split_corpus(src, opt.shard_size)
         tgt_shards = split_corpus(tgt, opt.shard_size)
-        order_shards = split_corpus(order, opt.shard_size)  # TODO: 要確認
-        shard_pairs = zip(src_shards, tgt_shards, order_shards)
+        order_shards1 = split_corpus(order1, opt.shard_size)  # TODO: 要確認
+        order_shards2 = split_corpus(order2, opt.shard_size)
+        shard_pairs = zip(src_shards, tgt_shards, order_shards1, order_shards2)
         dataset_paths = []
         if (corpus_type == "train" or opt.filter_valid) and tgt is not None:
             filter_pred = partial(
@@ -82,16 +85,17 @@ def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, order_reader
             else:
                 tgt_vocab = None
 
-        for i, (src_shard, tgt_shard, order_shard) in enumerate(shard_pairs):
-            assert len(src_shard) == len(tgt_shard) and len(src_shard) == len(order_shard)
+        for i, (src_shard, tgt_shard, order_shard1, order_shard2) in enumerate(shard_pairs):
+            assert len(src_shard) == len(tgt_shard) and len(src_shard) == len(order_shard1) \
+                   and len(src_shard) == len(order_shard2)
             logger.info("Building shard %d." % i)
             dataset = inputters.Dataset(
                 fields,
-                readers=([src_reader, tgt_reader, order_reader]
+                readers=([src_reader, tgt_reader, order1_reader, order2_reader]
                          if tgt_reader else [src_reader]),
-                data=([("src", src_shard), ("tgt", tgt_shard), ("order", order_shard)]
+                data=([("src", src_shard), ("tgt", tgt_shard), ("order1", order_shard1), ("order2", order_shard2)]
                       if tgt_reader else [("src", src_shard)]),
-                dirs=([opt.src_dir, None, None]
+                dirs=([opt.src_dir, None, None, None]
                       if tgt_reader else [opt.src_dir]),
                 sort_key=inputters.str2sortkey[opt.data_type],
                 filter_pred=filter_pred
@@ -194,15 +198,17 @@ def main(opt):
 
     src_reader = inputters.str2reader[opt.data_type].from_opt(opt)
     tgt_reader = inputters.str2reader["text"].from_opt(opt)
-    order_reader = inputters.str2reader["text"]()
+    order1_reader = inputters.str2reader["text"]()
+    order2_reader = inputters.str2reader["text"]()
+
 
     logger.info("Building & saving training data...")
     build_save_dataset(
-        'train', fields, src_reader, tgt_reader, order_reader, opt)
+        'train', fields, src_reader, tgt_reader, order1_reader, order2_reader, opt)
 
     if opt.valid_src and opt.valid_tgt:
         logger.info("Building & saving validation data...")
-        build_save_dataset('valid', fields, src_reader, tgt_reader, order_reader, opt)
+        build_save_dataset('valid', fields, src_reader, tgt_reader, order1_reader, order2_reader, opt)
 
 
 def _get_parser():

@@ -40,7 +40,7 @@ class EncoderBase(nn.Module):
             n_batch_, = lengths.size()
             aeq(n_batch, n_batch_)
 
-    def forward(self, src, order, lengths=None):
+    def forward(self, src, order1, order2, lengths=None):
         """
         Args:
             src (LongTensor):

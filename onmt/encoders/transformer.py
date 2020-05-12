@@ -33,7 +33,7 @@ class TransformerEncoderLayer(nn.Module):
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, inputs, order, mask):
+    def forward(self, inputs, order1, order2, mask):
         """
         Args:
             inputs (FloatTensor): ``(batch_size, src_len, model_dim)``
@@ -46,7 +46,7 @@ class TransformerEncoderLayer(nn.Module):
         """
         input_norm = self.layer_norm(inputs)
         context, _ = self.self_attn(input_norm, input_norm, input_norm,
-                                    order=order, mask=mask, type="self")
+                                    order1=order1, order2=order2, mask=mask, type="self")
         out = self.dropout(context) + inputs
         return self.feed_forward(out)
 
@@ -111,7 +111,7 @@ class TransformerEncoder(EncoderBase):
             embeddings,
             opt.max_relative_positions)
 
-    def forward(self, src, order, lengths=None):
+    def forward(self, src, order1, order2, lengths=None):
         """See :func:`EncoderBase.forward()`"""
         self._check_args(src, lengths)
 
@@ -124,7 +124,7 @@ class TransformerEncoder(EncoderBase):
         mask = words.data.eq(padding_idx).unsqueeze(1)  # [B, 1, T]
         # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
-            out = layer(out, order, mask)
+            out = layer(out, order1, order2, mask)
         out = self.layer_norm(out)
 
         return emb, out.transpose(0, 1).contiguous(), lengths

@@ -193,7 +193,9 @@ def preprocess_opts(parser):
               help="Path(s) to the training source data")
     group.add('--train_tgt', '-train_tgt', required=True, nargs='+',
               help="Path(s) to the training target data")
-    group.add('--train_order', '-train_order', required=True, nargs='+',
+    group.add('--train_order1', '-train_order1', required=True, nargs='+',
+              help="Path(s) to the training order data")
+    group.add('--train_order2', '-train_order2', required=True, nargs='+',
               help="Path(s) to the training order data")
     group.add('--train_ids', '-train_ids', nargs='+', default=[None],
               help="ids to name training shards, used for corpus weighting")
@@ -201,7 +203,9 @@ def preprocess_opts(parser):
               help="Path to the validation source data")
     group.add('--valid_tgt', '-valid_tgt',
               help="Path to the validation target data")
-    group.add('--valid_order', '-valid_order',
+    group.add('--valid_order1', '-valid_order1',
+              help="Path to the validation order data")
+    group.add('--valid_order2', '-valid_order2',
               help="Path to the validation order data")
 
     group.add('--src_dir', '-src_dir', default="",
@@ -575,7 +579,8 @@ def translate_opts(parser):
     group.add('--src', '-src', required=True,
               help="Source sequence to decode (one line per "
                    "sequence)")
-    group.add('--order', '-order', required=True)
+    group.add('--order1', '-order1', required=True)
+    group.add('--order2', '-order2', required=True)
     group.add('--src_dir', '-src_dir', default="",
               help='Source directory for image or audio files')
     group.add('--tgt', '-tgt',
