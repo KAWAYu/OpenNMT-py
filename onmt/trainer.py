@@ -316,7 +316,7 @@ class Trainer(object):
                                    else (batch.src, None)
                 tgt = batch.tgt
 
-                order1 = batch.order
+                order1 = batch.order1
                 order2 = batch.order2
 
                 # F-prop through the model.
