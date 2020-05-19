@@ -89,7 +89,8 @@ class Translator(object):
             fields,
             src_reader,
             tgt_reader,
-            order_reader,
+            order1_reader,
+            order2_reader,
             gpu=-1,
             n_best=1,
             min_length=0,
@@ -147,7 +148,8 @@ class Translator(object):
             self._tgt_vocab.stoi[t] for t in self.ignore_when_blocking}
         self.src_reader = src_reader
         self.tgt_reader = tgt_reader
-        self.order_reader = order_reader
+        self.order1_reader = order1_reader
+        self.order2_reader = order2_reader
         self.replace_unk = replace_unk
         if self.replace_unk and not self.model.decoder.attentional:
             raise ValueError(
@@ -215,13 +217,15 @@ class Translator(object):
 
         src_reader = inputters.str2reader[opt.data_type].from_opt(opt)
         tgt_reader = inputters.str2reader["text"].from_opt(opt)
-        order_reader = inputters.str2reader["text"]()
+        order1_reader = inputters.str2reader["text"]()
+        order2_reader = inputters.str2reader["text"]()
         return cls(
             model,
             fields,
             src_reader,
             tgt_reader,
-            order_reader,
+            order1_reader,
+            order2_reader,
             gpu=opt.gpu,
             n_best=opt.n_best,
             min_length=opt.min_length,
@@ -268,7 +272,8 @@ class Translator(object):
     def translate(
             self,
             src,
-            order,
+            order1,
+            order2,
             tgt=None,
             src_dir=None,
             batch_size=None,
@@ -297,9 +302,10 @@ class Translator(object):
 
         data = inputters.Dataset(
             self.fields,
-            readers=([self.src_reader, self.tgt_reader, self.order_reader]
-                     if tgt else [self.src_reader, self.order_reader]),
-            data=[("src", src), ("tgt", tgt), ("order", order)] if tgt else [("src", src), ("order", order)],
+            readers=([self.src_reader, self.tgt_reader, self.order1_reader, self.order2_reader]
+                     if tgt else [self.src_reader, self.order1_reader, self.order2_reader]),
+            data=[("src", src), ("tgt", tgt), ("order1", order1), ("order2", order2)] if tgt
+            else [("src", src), ("order1", order1), ("order2", order2)],
             dirs=[src_dir, None, None] if tgt else [src_dir, None],
             sort_key=inputters.str2sortkey[self.data_type],
             filter_pred=self._filter_pred
@@ -403,9 +409,9 @@ class Translator(object):
             total_time = end_time - start_time
             self._log("Total translation time (s): %f" % total_time)
             self._log("Average translation time (s): %f" % (
-                total_time / len(all_predictions)))
+                    total_time / len(all_predictions)))
             self._log("Tokens per second: %f" % (
-                pred_words_total / total_time))
+                    pred_words_total / total_time))
 
         if self.dump_beam:
             import json
@@ -529,18 +535,19 @@ class Translator(object):
 
     def _run_encoder(self, batch):
         src, src_lengths = batch.src if isinstance(batch.src, tuple) \
-                           else (batch.src, None)
-        order = batch.order
+            else (batch.src, None)
+        order1 = batch.order1
+        order2 = batch.order2
 
         enc_states, memory_bank, src_lengths = self.model.encoder(
-            src, order, src_lengths)
+            src, order1, order2, src_lengths)
         if src_lengths is None:
             assert not isinstance(memory_bank, tuple), \
                 'Ensemble decoding only supported for text data'
             src_lengths = torch.Tensor(batch.batch_size) \
-                               .type_as(memory_bank) \
-                               .long() \
-                               .fill_(memory_bank.size(0))
+                .type_as(memory_bank) \
+                .long() \
+                .fill_(memory_bank.size(0))
         return src, enc_states, memory_bank, src_lengths
 
     def _decode_and_generate(
