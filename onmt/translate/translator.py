@@ -306,7 +306,7 @@ class Translator(object):
                      if tgt else [self.src_reader, self.order1_reader, self.order2_reader]),
             data=[("src", src), ("tgt", tgt), ("order1", order1), ("order2", order2)] if tgt
             else [("src", src), ("order1", order1), ("order2", order2)],
-            dirs=[src_dir, None, None] if tgt else [src_dir, None],
+            dirs=[src_dir, None, None, None] if tgt else [src_dir, None, None],
             sort_key=inputters.str2sortkey[self.data_type],
             filter_pred=self._filter_pred
         )
